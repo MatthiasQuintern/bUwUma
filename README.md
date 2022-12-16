@@ -37,15 +37,16 @@ refer to the article [on my website](https://quintern.xyz/en/software/buwuma.htm
 - If a command-comment takes up a whole line, the whole line including the newline character is replaced.
 
 
----
-
 ## Commands
 ### include
 Include the content of a file at the position of the command.
+
 **Synopsis**:
 `<!-- #include path/to-a-text-file.html -->`
+
 **Argument**:
 A absolute or relative path to a text file
+
 **Return Value**:
 The content of the file or `<!-- Could not include '{args}' -->` empty string if the file can not be opened.
 
@@ -53,13 +54,17 @@ The content of the file or `<!-- Could not include '{args}' -->` empty string if
 
 ### set 
 Set the value of a variable
+
 **Synopsis**:
 Set the value of `varname` to `this is the value`:
 `<!-- #set varname this is the value -->`
+
 Set the value of `varname` depending on the value of `othervar`:
 `<!-- #set varname othervar?{*:fallback,key1:val1,key2:val2...}>`
+
 **Argument**:
 The first word is the name of the variable, the rest is the value or a dictionary.
+
 **Return Value**:
 Empty string
 You can make the value of `varname` dependant on the value of another variable `othervar` by using a dictionary-like syntax described above.
@@ -74,10 +79,13 @@ Same as `set`, but it sets the variable's value only if it has no value yet.
 
 ### comment
 Comment the arguemnts.
+
 **Synopsis**:
 `<!-- #comment This will stay as comment in the html -->`
+
 **Argument**:
 Any string
+
 **Return Value**:
 The argument in comment tags
 This can be useful in multiline comments that contain other commands: In that case, the comment tags will be removed and each command replaced with
@@ -85,10 +93,13 @@ its return value, so if you want to just have commented text in there you can us
 
 ### uncomment
 Uncomment the comment.
+
 **Synopsis**:
 `<!-- #uncomment This will not be commented -->`
+
 **Argument**:
 Any string
+
 **Return Value**:
 The argument
 This can be useful when you want to look at the unprocessed html without variables or when your syntax highlighting gets confused by a variable.
@@ -98,37 +109,47 @@ This can be useful when you want to look at the unprocessed html without variabl
 ### sidenav
 Manage the generation of a content menu which contains links to all headings in your html that have an id. The menu is called sidenav here.
 An entry is a html heading with a id: `<h1 id=myheading>This heading will be linked in the sidenav</h1>`
+
 **Synopsis**:
 `<!-- #sidenav sidenav-command arguments -->`
 sidenav-command must be one of the following:
 
 #### `include`
 Include the generated sidenav at this position.
+
 **Argument**:
 Ignored
+
 **Return Value**:
 The generated sidenav
 
 #### `section`
 Group all following entries in named section.
+
 **Argument**:
 The name of the section
+
 **Return Value**
 Empty string
 
 #### `name`
 Use a custom name instead of the heading itself for the link to the next heading.
+
 **Argument**:
 The link-name of the next heading
+
 **Return Value**:
 Empty string
 
 #### `custom`
 Include a custom link in the sidenav.
+
 **Synopsis**:
 `<!-- #sidenav custom href="my-link" name="Go to my link!" -->`
+
 **Argument**:
 Must be `href="..." name="..."`. Either single `'` or double `"` quotes are required.
+
 **Return Value**:
 Empty string
 
@@ -136,5 +157,5 @@ Empty string
 
 ## Pitfalls
 - The `#include` command must not be in the last line of the file
-- The maps in `set` have **at least 2** options
+- The maps in `set` must have **at least 2** options
 - If you want to use variables in markdown, you have to escape the `#` with a backslash, so `#$(var)` becomes `\#$(var)`
