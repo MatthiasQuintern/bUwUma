@@ -6,8 +6,7 @@ from collections.abc import Callable
 
 """
 TODO:
-- testing
-- generate sidenav during parse_file for increased speed and to allow sidenav commands in multiline comments
+- more testing
 - reintroduce the nav_selected class on nav feature
 """
 """

@@ -1,4 +1,7 @@
 # bUwUma
+**Bu**ild **W**ebsites **U**sing **Ma**ke
+
+## Overview
 `bUwUma` is a build system that uses **GNU make** and a **preprocessor** written in python to build **static**, **multilingual** websites.
 
 This readme only documents the preprocessor.
