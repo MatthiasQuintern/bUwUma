@@ -136,10 +136,10 @@ Empty string
 Use a custom name instead of the heading itself for the link to the next heading.
 
 **Argument**:
-The link-name of the next heading
+| The link-name of the next heading
 
 **Return Value**:
-Empty string
+| Empty string
 
 #### `custom`
 Include a custom link in the sidenav.
