@@ -70,10 +70,14 @@ The first word is the name of the variable, the rest is the value or a dictionar
 
 **Return Value**:
 Empty string
+
 You can make the value of `varname` dependant on the value of another variable `othervar` by using a dictionary-like syntax described above.
 In this case, `varname` will take the first value from the dictionary that matches tha value of `othervar`. 
 `*` always everything and can be used as fallback. General wildcards like `a*` to match everything that starts with a are not supported.
 Instead of commas `,` you can also use semicolons `;` as separators, but this must be consistend within the map.
+
+### return
+Same as `set`, but it returns the value of the variable that is being set. This is meant to use with maps, when you need a variable from a map you can 'inline' it with `return`
 
 ### default
 Same as `set`, but it sets the variable's value only if it has no value yet.
@@ -91,6 +95,7 @@ Any string
 
 **Return Value**:
 The argument in comment tags
+
 This can be useful in multiline comments that contain other commands: In that case, the comment tags will be removed and each command replaced with
 its return value, so if you want to just have commented text in there you can use `#comment` 
 
@@ -105,6 +110,7 @@ Any string
 
 **Return Value**:
 The argument
+
 This can be useful when you want to look at the unprocessed html without variables or when your syntax highlighting gets confused by a variable.
 
 ---
@@ -162,3 +168,4 @@ Empty string
 - The `#include` command must not be in the last line of the file
 - The maps in `set` must have **at least 2** options
 - If you want to use variables in markdown, you have to escape the `#` with a backslash, so `#$(var)` becomes `\#$(var)`
+- You can not use the `return` command from within the arguments of other commands. Commands are executed in order, so `return` will end up as argument of the first command and thus never be executed

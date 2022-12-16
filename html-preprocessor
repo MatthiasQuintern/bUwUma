@@ -215,7 +215,7 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
     glob_dependcies.append(args)
     return content
 
-def cmd_set(args: str, variables:dict[str, str]={}) -> str:
+def cmd_return(args: str, variables:dict[str, str]={}) -> str:
     # re_set_map = r"([a-zA-Z0-9_]+)\?\{(([a-zA-Z0-9_]+:.+,)*([a-zA-Z0-9_]+:.+))\}"
     # <!-- #set section=lang?{*:Fallback,de:Abschnitt,en:Section} -->
     space = args.find(' ')
@@ -247,15 +247,20 @@ def cmd_set(args: str, variables:dict[str, str]={}) -> str:
                     variables[varname] = option[colon+1:].strip(" ")
 
         else:  # simple asignment
-            value = args[space+1:]
-            variables[varname] = value.strip(" ")
-            pdebug(f"cmd_set: Assignment {varname} -> {value.strip(' ')}")
+            value = args[space+1:].strip(" ")
+            variables[varname] = value
+            pdebug(f"cmd_set: Assignment {varname} -> {value}")
+        return variables[varname]
+    return ""
+
+def cmd_set(args: str, variables:dict[str, str]={}) -> str:
+    cmd_return(args, variables)
     return ""
 
 def cmd_default(args: str, variables:dict[str, str]={}) -> str:
     separator = args.find(' ')
     if args[:separator] not in variables:
-        return cmd_set(args, variables)
+        cmd_return(args, variables)
     return ""
 
 
@@ -268,6 +273,7 @@ def cmd_uncomment(args: str, variables:dict[str, str]={}) -> str:
 command2function:dict[str, Callable[[str, dict[str,str]], str]] = {
     "include":      cmd_include,
     "set":          cmd_set,
+    "return":       cmd_return,
     "default":      cmd_default,
     "comment":      cmd_comment,
     "uncomment":    cmd_uncomment,
