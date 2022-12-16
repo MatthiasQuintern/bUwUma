@@ -124,7 +124,7 @@ An entry is a html heading with a id: `<h1 id=myheading>This heading will be lin
 sidenav-command must be one of the following:
 
 #### `include`
-Include the generated sidenav at this position.
+Include the generated sidenav at this position. This command will always be executed last, after the whole file has been parsed.
 
 **Argument**:
 Ignored
@@ -166,6 +166,7 @@ Empty string
 
 ## Pitfalls
 - The `#include` command must not be in the last line of the file
+- The `#include` command can not be in multiline comment if the included file also contains comments
 - The maps in `set` must have **at least 2** options
 - If you want to use variables in markdown, you have to escape the `#` with a backslash, so `#$(var)` becomes `\#$(var)`
 - You can not use the `return` command from within the arguments of other commands. Commands are executed in order, so `return` will end up as argument of the first command and thus never be executed
