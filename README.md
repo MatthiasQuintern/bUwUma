@@ -122,13 +122,15 @@ Logical and `&&` and logical or `||` can be used to chain conditions.
 If a condition is true, the corresponding block is included while all other blocks are deleted.
 
 **Synopsis**
-    <!-- #if #$(var) == value && #$(other_var) == other_value -->
-    ...
-    <!-- #elif #$(var) == value || #$(other_var) != other_value -->
-    ...
-    <!-- #else -->
-    ...
-    <!-- #endif -->
+```
+<!-- #if #$(var) == value && #$(other_var) == other_value -->
+...
+<!-- #elif #$(var) == value || #$(other_var) != other_value -->
+...
+<!-- #else -->
+...
+<!-- #endif -->
+```
 
 **Argument** Condition for `if` and `elif`, ignored for `else` and `endif`
 **Return Value** Empty String
