@@ -69,11 +69,11 @@ exit_on_error_level = error_levels["serious"]
 """
 ************************************************************ UTILITY ************************************************************
 """
-DEBUG = False
+DEBUG = True
 def pdebug(*args, **keys):
     if DEBUG: print(*args, **keys)
 
-TRACE = False
+TRACE = True
 def ptrace(*args, **keys):
     if TRACE: print(*args, **keys)
 
@@ -105,6 +105,20 @@ def generate_dependecy_file(filename:str, deps:list[str]):
         line1 += f" {dep}"
         s += f"{dep}:\n"
     return line1 #+ "\n" + s
+
+def evaluate_condition(input_string) -> bool:
+    words = re.split(r"(==|!=|&&|\|\|)", input_string.replace(" ", ""))
+    for i in range(len(words)):
+        if words[i] not in ["==", "!=", "&&", "||"]:
+            words[i] = '"' + words[i].replace('"', r'\"') + '"'
+
+    condition = "".join(words).replace("&&", " and ").replace("||", " or ")
+    ptrace(f"> Evaluating condition {condition}")
+    try:
+        return eval(condition)
+    except SyntaxError:
+        error(f"Pythonized condition is invalid: {condition}", level=error_levels["light"])
+        return False
 
 
 
@@ -283,101 +297,188 @@ command2function:dict[str, Callable[[str, dict[str,str]], str]] = {
 """
 ************************************************************ PARSING ************************************************************
 """
-def parse_file(file:str, variables:dict[str,str]):
+
+class Parser():
+    def __init__(self, file):
+        self.file = file
+        self.pos: dict[str, int] = {}
+        self.state: dict[str, bool] = {}
+
+    def remove(self, start, stop, ignore_bounds=[]):
+        """remove range [start, stop) of text and update positions"""
+        delete_length = stop - start
+        nl, esl = "\n", "\\n"
+
+        ptrace(f"- Deleting range [{start}, {stop}) of length {delete_length}: '{self.file[start:stop].replace(nl, esl)}'")
+        assert(stop >= start)
+        assert(stop <= len(self.file))
+        self.file = self.file[:start] + self.file[stop:]
+        for k,pos in self.pos.items():
+            if pos >= stop: self.pos[k] -= delete_length
+            elif pos > start and not k in ignore_bounds: error(f"Position {k}={pos} within deleted range [{start},{stop})", level=1)
+
+    def replace(self, start, stop, replacement):
+        assert(stop >= start)
+        assert(stop <= len(self.file))
+        ptrace(f"- Replacing range [{start}, {stop}): '{self.file[start:stop]}' with '{replacement}'")
+        self.file = self.file[:start] + replacement + self.file[stop:]
+        length_difference = stop - start - len(replacement)
+        for k,pos in self.pos.items():
+            if pos >= stop: self.pos[k] -= length_difference
+            elif pos > start: error(f"Position {k}={pos} within replaced range [{start},{stop})", level=1)
+
+    def __getitem__(self, key):
+        return self.file[key]
+
+    def __len__(self):
+        return len(self.file)
+
+
+
+def parse_file(_file:str, variables:dict[str,str]):
+    p = Parser(_file)
     sidenav_include_pos = -1
-    comment_begin = -1
-    remove_comment = False
+    p.pos["cmt_beg"] = -1
+    p.pos["cmt_end"] = -1
+    p.pos["cmd_beg"] = -1
+    p.pos["cmdend"] = -1
+    p.pos["conditional_block_beg"] = -1  # char pos of the first char of the last block, if waiting for elif, else or endif
+    p.state["cmd_in_cmt"] = False
+    p.state["last_condition"] = False  # if the last if condition was true
     i = 0
     # if file.count(COMMENT_BEGIN) != file.count(COMMENT_END):
 
-    while i < len(file):  # at start of new line or end of comment
+    while i < len(p):  # at start of new line or end of comment
+        ptrace(f"Processing at i={i} in line {pos2line(p.file, i)}")
+
         # replace variable usages in the current line
-        line_end = file.find('\n', i)
-        if line_end < 0: line_end = len(file)
-        file = file[:i] + replace_variables(file[i:line_end], variables) + file[line_end:]
-        line_end = file.find('\n', i)
-        if line_end < 0: line_end = len(file)
-        ptrace("Line after replacing variables:", file[i:line_end])
+        p.pos["line_end"] = p.file.find('\n', i)
+        if p.pos["line_end"] < 0: p.pos["line_end"] = len(p)
+        p.replace(i, p.pos["line_end"], replace_variables(p[i:p.pos["line_end"]], variables))
+        ptrace("> Line after replacing variables:", p.file[i:p.pos["line_end"]])
 
         # check if heading for sidenav in line
-        match = re.search(re_sidenav_heading, file[i:line_end])
+        match = re.search(re_sidenav_heading, p[i:p.pos["line_end"]])
         if match:
             Sidenav.addEntry(match.groups()[1], f"#{match.groups()[0]}")
             ptrace("> Found heading with id:", match.groups())
 
-        if comment_begin < 0:  # if not in comment, find next comment
-            comment_begin = file.find(COMMENT_BEGIN, i, line_end)
+        # look for comment
+        if p.pos["cmt_beg"] < 0:  # if not in comment, find next comment
+            p.pos["cmt_beg"] = p.file.find(COMMENT_BEGIN, i, p.pos["line_end"])
             # ptrace(f"i={i}, line_end={line_end}, comment_begin={comment_begin}")
-            if comment_begin < 0:
-                i = line_end + 1
+            if p.pos["cmt_beg"] < 0:
+                i = p.pos["line_end"] + 1
                 continue
             else:
                 # jump to comment_begin
                 old_i = i
-                i = comment_begin + len(COMMENT_BEGIN)  # after comment begin
+                i = p.pos["cmt_beg"] + len(COMMENT_BEGIN)  # after comment begin
                 ptrace(f"> Found comment begin, jumping from pos {old_i} to {i}")
 
-        # if here, i at the character after COMMENT_BEGIN
-        # sanity check
-        tmp_next_begin = file.find(COMMENT_BEGIN, i)
-        if 0 < tmp_next_begin and  tmp_next_begin < file.find(COMMENT_END, i):
-            error(f"Found next comment begin before the comment starting in line {pos2line(file, comment_begin)} is ended! Skipping comment. Comment without proper closing tags: '{file[i:line_end]}'", level=error_levels["light"])
-            comment_begin = -1
-            continue
-        # either at newline (if in multiline comment) or at comment end
-        possible_command_end = line_end
-        comment_end = file.find(COMMENT_END, i, line_end)
-        # ptrace(f"i={i}, line_end={line_end}, comment_begin={comment_begin}, comment_end={comment_end}, line={file[i:line_end]}")
-        if comment_end > 0: possible_command_end = comment_end
-        assert(possible_command_end >= i)
+        # in comment, i at the character after COMMENT_BEGIN
+        p.pos["cmt_end"] = p.file.find(COMMENT_END, i) #, p.pos["line_end"])
+        # sanity checks
+        if p.pos["cmt_end"] < 0:
+            error(f"Comment starting in line {pos2line(p.file, p.pos['cmt_beg'])} is never ended.", level=error_levels["serious"])
+        else:
+            tmp_next_begin = p.file.find(COMMENT_BEGIN, i)
+            if 0 < tmp_next_begin and  tmp_next_begin < p.pos["cmt_end"]:
+                error(f"Found next comment begin before the comment starting in line {pos2line(p.file, p.pos['cmt_beg'])} is ended! Skipping comment. Comment without proper closing tags: '{p.file[i:p.pos['line_end']]}'", level=error_levels["light"])
+                p.pos["cmt_beg"] = -1
+                continue
 
-        ptrace(f"> Possible command end: {possible_command_end}, possible command: {file[i:possible_command_end]}")
+        # either at newline (if in multiline comment) or at comment end
+        p.pos["cmd_beg"] = i
+        p.pos["cmd_end"] = min(p.pos["line_end"], p.pos["cmt_end"])
+        assert p.pos["cmd_end"] >= i, f"cmd_end={p.pos['cmd_end']}, i={i}, line_end={p.pos['line_end']}, cmt_end={p.pos['cmt_end']}"
+        ptrace(f"> Possible command end: {p.pos['cmd_end']}, possible command: '{p[i:p.pos['cmd_end']]}'")
+
         # find commands
-        # pdebug(">>> Line ", file[i:possible_command_end])
-        match = re.fullmatch(re_preprocessor_command, file[i:possible_command_end].strip(" "))
+        match = re.fullmatch(re_preprocessor_command, p[i:p.pos["cmd_end"]].strip(" "))
         if match:  # command comment
-            remove_comment = True
+            p.state["cmd_in_cmt"] = True
             command = match.groups()[0]
             args = match.groups()[1].replace('\t', ' ').strip(' ')
-            ptrace(f"> Found command '{command}' with args '{args}'")
-            if command == "sidenav" and args == "include":  # if args contains anything else this wont work
-                sidenav_include_pos = comment_begin  # remove the comment 
-                insert_str = ""
-            elif command not in command2function:
-                error(f"Invalid command in line {pos2line(file, i)}: {command}", level=error_levels["light"])
-                insert_str = ""
+            pdebug(f"> Found command '{command}' with args '{args}'")
+            # delete from previous block if
+            if command in ["elif", "else", "endif"]:
+                if p.pos["conditional_block_beg"] < 0: error(f"Misplaced '{command}' in line {pos2line(p.file, i)}")
+                if p.state["last_condition"]:
+                    # delete block from here at next endif
+                    p.state["last_condition"] = False
+                else:
+                    # delete block from last condition statement
+                    ptrace(f"> Deleting block from last condition")
+                    p.remove(p.pos["conditional_block_beg"], p.pos["cmt_beg"])
+                    i = p.pos["cmd_beg"]
+                p.pos["conditional_block_beg"] = i
+                if command == "endif":
+                    p.pos["conditional_block_beg"] = -1
+                    p.state["last_condition"] = False
+                    p.state["any_condition"] = False
+            # evaluate ifs
+            if command == "if":
+                p.pos["conditional_block_beg"] = i
+                p.state["last_condition"] = evaluate_condition(args)
+                p.state["any_condition"] = p.state["last_condition"]
+                pdebug(f"> Command {command} condition evaluated to {p.state['last_condition']}")
+                cmd_output = ""
+            elif command =="elif":
+                p.pos["conditional_block_beg"] = i
+                p.state["last_condition"] = evaluate_condition(args) if not p.state["any_condition"] else False
+                if p.state["last_condition"]:
+                    p.state["any_condition"] = True
+                pdebug(f"> Command {command} condition evaluated to {p.state['last_condition']}")
+                cmd_output = ""
+            elif command == "else":
+                p.pos["conditional_block_beg"] = i
+                p.state["last_condition"] = True if not p.state["any_condition"] else False
+                cmd_output = ""
+            elif p.pos["conditional_block_beg"] < 0 or p.state["last_condition"]:
+                if command == "sidenav" and args == "include":  # if args contains anything else this wont work
+                    sidenav_include_pos = p.pos["cmt_beg"]  # remove the comment 
+                    cmd_output = ""
+                elif command == "endif":
+                    cmd_output = ""
+                elif command not in command2function:
+                    error(f"Invalid command in line {pos2line(p.file, i)}: {command}", level=error_levels["light"])
+                    cmd_output = ""
+                else:
+                    cmd_output = command2function[command](args, variables)
             else:
-                insert_str = command2function[command](args, variables)
-            file = file[:i] + insert_str + file[possible_command_end:]
-            # replaced string of length possible_command_end - i with one of length insert_str
-            index_correction = -(possible_command_end - i) + len(insert_str)
-            possible_command_end += index_correction
-            line_end += index_correction
-            comment_end += index_correction
-            ptrace(f"> After command, the line is now '{file[i:possible_command_end]}'")
-            # i += len(insert_str)
+                cmd_output = ""
+            p.replace(i, p.pos["cmd_end"], cmd_output)
+            ptrace(f"> After command, the line is now '{p.file[i:p.pos['line_end']]}'")
 
-        # remove comment if done
-        if possible_command_end == comment_end:
-            remove_newline = 0
-            if file[comment_begin-1] == '\n' and file[comment_end+len(COMMENT_END)] == '\n':  # if the comment consumes the whole file, remove the entire line
-                remove_newline = 1
 
-            if remove_comment:
-                # remove the comment tags, basically uncomment the comment
-                # pdebug(f"Removing comment tags from pos {comment_begin} to {comment_end}")
-                file = file[:comment_begin] + file[comment_begin+len(COMMENT_BEGIN):comment_end] + file[comment_end+len(COMMENT_END)+remove_newline:]
-                possible_command_end -= len(COMMENT_BEGIN)
+        if p.pos["cmd_end"] == p.pos["cmt_end"]:  # reached end of comment
+            if p.state["cmd_in_cmt"]:
+                # remove comment tags if a command was found
+                remove_newline = 0
+                if p[p.pos["cmt_beg"]-1] == '\n' and p[p.pos["cmt_end"]+len(COMMENT_END)] == '\n':  # if the comment consumes the whole line, remove the entire line
+                    remove_newline = 1
+                # remove comment if done
+                ptrace(f"Deleting opening comment tags")
+                p.remove(p.pos["cmt_beg"], p.pos["cmt_beg"] + len(COMMENT_BEGIN))
+                p.remove(p.pos["cmt_end"], p.pos["cmt_end"] + len(COMMENT_END) + remove_newline, ignore_bounds=["cmt_end", "cmd_end", "line_end"])
+                # process the line again, because a command might have inserted new comments
                 i -= len(COMMENT_BEGIN)
-            remove_comment = False
-            comment_begin = -1
+            p.state["cmd_in_cmt"] = False
+            p.pos["cmt_beg"] = -1
+            p.pos["cmt_end"] = -1
+            p.pos["cmd_end"] = -1
         else:  # multiline comment
-            i = line_end + 1
-            ptrace(f"Multiline comment, jumping to next line. char[i]='{file[i]}'")
+            p.pos["cmt_end"] = -1
+            p.pos["cmd_end"] = -1
+            i = p.pos["line_end"] + 1
+            ptrace(f"> Multiline comment, jumping to next line.")
         # i = possible_command_end commented, because if something containing new commands is inserted we need to parse that as well
+
     if sidenav_include_pos >= 0:
-        file = file[:sidenav_include_pos] + Sidenav.generate() + file[sidenav_include_pos:]
-    return file
+        return p.file[:sidenav_include_pos] + Sidenav.generate() + p.file[sidenav_include_pos:]
+    else:
+        return p.file
 
 
 def replace_variables(html:str, variables:dict[str, str]):
@@ -389,7 +490,7 @@ def replace_variables(html:str, variables:dict[str, str]):
         matches.append(match)
     html_list = list(html)
     for match in reversed(matches):
-        pdebug(f"Found variable usage {match.groups()[0]}, match from {match.start()} to {match.end()}")
+        pdebug(f"> Found variable usage {match.groups()[0]}, match from {match.start()} to {match.end()}")
         value = ""
         if match.groups()[0] in variables: value = variables[match.groups()[0]]
         for _ in range(match.start(), match.end()):

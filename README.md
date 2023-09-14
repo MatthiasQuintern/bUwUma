@@ -11,7 +11,7 @@ refer to the article [on my website](https://quintern.xyz/en/software/buwuma.htm
 # HTML Preprocessor Documentation
 ## Syntax
 ### Commands
-- All commands must be located within a html comment what starts with `<!--` and ends with `-->`.
+- All commands must be located within a html comment that starts with `<!--` and ends with `-->`.
 - Commands start with a `#` character, the command must follow the `#` immediately.
 - Everything after the command until the end of the comment or a newline character are considered the argument of the command.
 
@@ -27,7 +27,7 @@ refer to the article [on my website](https://quintern.xyz/en/software/buwuma.htm
 
 - All commands return a string, which can be empty.
 - If a comment contains a command, the entire comment will replaced with the return value of the command.
-- If there are multiple commands in a command, it will be replaced by all the return values added together.
+- If there are multiple commands in a comment, it will be replaced by all the return values added together.
 
 ### Variables
 - Variable names must only consist of these characters: `a-zA-Z0-9_`
@@ -96,7 +96,7 @@ Any string
 **Return Value**:
 The argument in comment tags
 
-This can be useful in multiline comments that contain other commands: In that case, the comment tags will be removed and each command replaced with
+This can be useful in multi-line comments that contain other commands: In that case, the comment tags will be removed and each command replaced with
 its return value, so if you want to just have commented text in there you can use `#comment` 
 
 ### uncomment
@@ -112,6 +112,26 @@ Any string
 The argument
 
 This can be useful when you want to look at the unprocessed html without variables or when your syntax highlighting gets confused by a variable.
+
+---
+
+### conditionals
+To turn on or off entire blocks, `if`, `elif` can `else` be used.
+These commands must not be in multi-line comments.
+Logical and `&&` and logical or `||` can be used to chain conditions.
+If a condition is true, the corresponding block is included while all other blocks are deleted.
+
+**Synopsis**
+    <!-- #if #$(var) == value && #$(other_var) == other_value -->
+    ...
+    <!-- #elif #$(var) == value || #$(other_var) != other_value -->
+    ...
+    <!-- #else -->
+    ...
+    <!-- #endif -->
+
+**Argument** Condition for `if` and `elif`, ignored for `else` and `endif`
+**Return Value** Empty String
 
 ---
 
@@ -166,7 +186,8 @@ Empty string
 
 ## Pitfalls
 - The `#include` command must not be in the last line of the file
-- The `#include` command can not be in multiline comment if the included file also contains comments
+- The `#include` command can not be in multi-line comment if the included file also contains comments
+- `#if`, `#elif`, `#else` and `#endif` must not be in multi-line comments
 - The maps in `set` must have **at least 2** options
 - If you want to use variables in markdown, you have to escape the `#` with a backslash, so `#$(var)` becomes `\#$(var)`
 - You can not use the `return` command from within the arguments of other commands. Commands are executed in order, so `return` will end up as argument of the first command and thus never be executed
