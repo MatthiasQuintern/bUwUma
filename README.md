@@ -117,7 +117,7 @@ This can be useful when you want to look at the unprocessed html without variabl
 
 ### conditionals
 To turn on or off entire blocks, `if`, `elif` can `else` be used.
-These commands must not be in multi-line comments.
+These commands can not be nested and must not appear in multi-line comments.
 Logical and `&&` and logical or `||` can be used to chain conditions.
 If a condition is true, the corresponding block is included while all other blocks are deleted.
 
@@ -133,6 +133,7 @@ If a condition is true, the corresponding block is included while all other bloc
 ```
 
 **Argument** Condition for `if` and `elif`, ignored for `else` and `endif`
+
 **Return Value** Empty String
 
 ---

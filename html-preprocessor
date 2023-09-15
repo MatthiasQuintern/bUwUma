@@ -69,11 +69,11 @@ exit_on_error_level = error_levels["serious"]
 """
 ************************************************************ UTILITY ************************************************************
 """
-DEBUG = True
+DEBUG = False
 def pdebug(*args, **keys):
     if DEBUG: print(*args, **keys)
 
-TRACE = True
+TRACE = False
 def ptrace(*args, **keys):
     if TRACE: print(*args, **keys)
 
@@ -283,6 +283,13 @@ def cmd_comment(args: str, variables:dict[str, str]={}) -> str:
 def cmd_uncomment(args: str, variables:dict[str, str]={}) -> str:
     return args
 
+def cmd_error(args: str, variables:dict[str, str]={}) -> str:
+    error(f"Encounted 'error' command: {args}", level=error_levels["critical"])
+    return ""
+def cmd_warning(args: str, variables:dict[str, str]={}) -> str:
+    error(f"Encounted 'warning' command: {args}", level=error_levels["light"])
+    return ""
+
 
 command2function:dict[str, Callable[[str, dict[str,str]], str]] = {
     "include":      cmd_include,
@@ -291,7 +298,9 @@ command2function:dict[str, Callable[[str, dict[str,str]], str]] = {
     "default":      cmd_default,
     "comment":      cmd_comment,
     "uncomment":    cmd_uncomment,
-    "sidenav":      Sidenav.cmd_sidenav
+    "sidenav":      Sidenav.cmd_sidenav,
+    "warning":      cmd_warning,
+    "error":        cmd_error,
 }
 
 """
