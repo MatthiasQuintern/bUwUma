@@ -42,16 +42,31 @@ refer to the article [on my website](https://quintern.xyz/en/software/buwuma.htm
 
 ## Commands
 ### include
-Include the content of a file at the position of the command.
+Include the content of a file (or only a specific section in that file) at the position of the command.
 
 **Synopsis**:
 `<!-- #include path/to-a-text-file.html -->`
+`<!-- #include path/to-a-text-file.html section_name -->`
 
 **Argument**:
-A absolute or relative path to a text file
+A absolute or relative path to a text file [ + section name ]
 
 **Return Value**:
 The content of the file or `<!-- Could not include '{args}' -->` empty string if the file can not be opened.
+
+---
+
+### section
+Start a section in a file. The section is only used by the `include` command to determine the start and end of a section
+
+**Synopsis**:
+`<!-- #section section_name -->`
+
+**Argument**:
+Name of the section
+
+**Return Value**:
+Empty String
 
 ---
 
