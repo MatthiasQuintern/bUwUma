@@ -216,6 +216,54 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
     try:
         with open(args) as file:
             content = file.read()
+            p = Parser(content)
+            p.pos["seg_beg"] = -1
+            p.pos["seg_end"] = -1
+            i = 0
+            while i < len(p):  # at start of new line or end of comment
+                # simply search for the segment begin and end
+                ptrace(f"cmd_include: Processing at i={i} in line {pos2line(p.file, i)}")
+
+                # look for comment
+                if p.pos["cmt_beg"] < 0:  # if not in comment, find next comment
+                    p.pos["cmt_beg"] = p.file.find(COMMENT_BEGIN, i, p.pos["line_end"])
+                    # ptrace(f"i={i}, line_end={line_end}, comment_begin={comment_begin}")
+                    if p.pos["cmt_beg"] < 0:
+                        i = p.pos["line_end"] + 1
+                        continue
+                    else:
+                        # jump to comment_begin
+                        old_i = i
+                        i = p.pos["cmt_beg"] + len(COMMENT_BEGIN)  # after comment begin
+                        ptrace(f"> Found comment begin, jumping from pos {old_i} to {i}")
+
+                # in comment, i at the character after COMMENT_BEGIN
+                p.pos["cmt_end"] = p.file.find(COMMENT_END, i) #, p.pos["line_end"])
+                # sanity checks
+                if p.pos["cmt_end"] < 0:
+                    error(f"Comment starting in line {pos2line(p.file, p.pos['cmt_beg'])} is never ended.", level=error_levels["serious"])
+                else:
+                    tmp_next_begin = p.file.find(COMMENT_BEGIN, i)
+                    if 0 < tmp_next_begin and  tmp_next_begin < p.pos["cmt_end"]:
+                        error(f"Found next comment begin before the comment starting in line {pos2line(p.file, p.pos['cmt_beg'])} is ended! Skipping comment. Comment without proper closing tags: '{p.file[i:p.pos['line_end']]}'", level=error_levels["light"])
+                        p.pos["cmt_beg"] = -1
+                        continue
+
+                # either at newline (if in multiline comment) or at comment end
+                p.pos["cmd_beg"] = i
+                p.pos["cmd_end"] = min(p.pos["line_end"], p.pos["cmt_end"])
+                assert p.pos["cmd_end"] >= i, f"cmd_end={p.pos['cmd_end']}, i={i}, line_end={p.pos['line_end']}, cmt_end={p.pos['cmt_end']}"
+                ptrace(f"> Possible command end: {p.pos['cmd_end']}, possible command: '{p[i:p.pos['cmd_end']]}'")
+
+                # find commands
+                match = re.fullmatch(re_preprocessor_command, p[i:p.pos["cmd_end"]].strip(" "))
+                if match:  # command comment
+                    p.state["cmd_in_cmt"] = True
+                    command = match.groups()[0]
+                    args = match.groups()[1].replace('\t', ' ').strip(' ')
+                    pdebug(f"> Found command '{command}' with args '{args}'")
+                    # delete from previous block if
+                    if command in ["elif", "else", "endif"]:
     except:
         error(f"cmd_include: Could not open file '{args}'", level=error_levels["serious"], exit_code=exit_codes["FileNotFound"])
         content = f"<!-- Could not include '{args}' -->"
@@ -343,9 +391,65 @@ class Parser():
         return len(self.file)
 
 
+class HTMLParser(Parser):
+    """
+    Parse a html file
+    Each function operates the positon indicated by i until the position "line_end"
+    """
+    def __init__(self, file, variables:dict[str, str]):
+        super().__init__(file)
+        self.i = 0
+        self.variables = variables
+        self.pos["cmt_beg"] = -1
+        self.pos["cmt_end"] = -1
+        self.pos["cmd_beg"] = -1
+        self.pos["cmdend"] = -1
+        self.pos["conditional_block_beg"] = -1  # char pos of the first char of the last block, if waiting for elif, else or endif
+        self.state["cmd_in_cmt"] = False
+        self.state["last_condition"] = False  # if the last if condition was true
+
+    def next_line(self):
+        """update i and line_end"""
+        self.pos["line_end"] = self.file.find('\n', i)
+        if self.pos["line_end"] < 0: self.pos["line_end"] = len(self)
+
+    def use_variables(self):
+        """replace variable usages in the current line"""
+        self.replace(i, self.pos["line_end"], replace_variables(self[i:self.pos["line_end"]], variables))
+        ptrace("> Line after replacing variables:", self.file[i:self.pos["line_end"]])
+
+    def add_sidenav_headings(self):
+        """check if heading for sidenav in line"""
+        match = re.search(re_sidenav_heading, self[i:self.pos["line_end"]])
+        if match:
+            Sidenav.addEntry(match.groups()[1], f"#{match.groups()[0]}")
+            ptrace("> Found heading with id:", match.groups())
+
+    def find_comment_begin(self) -> bool:
+        """
+        find the beginning of a comment in the current line
+        if comment begin was found, jump into the comment, return True
+        """
+        # look for comment begin
+        if self.pos["cmt_beg"] < 0:  # if not in comment, find next comment
+            self.pos["cmt_beg"] = self.file.find(COMMENT_BEGIN, self.i, self.pos["line_end"])
+            # ptrace(f"i={i}, line_end={line_end}, comment_begin={comment_begin}")
+            if self.pos["cmt_beg"] < 0:
+                self.i = self.pos["line_end"] + 1
+                return False
+            else:
+                # jump to comment_begin
+                old_i = self.i
+                self.i = self.pos["cmt_beg"] + len(COMMENT_BEGIN)  # after comment begin
+                ptrace(f"> Found comment begin, jumping from pos {old_i} to {self.i}")
+                return True
+        return True  # still in previous comment
+
+
+
 
 def parse_file(_file:str, variables:dict[str,str]):
-    p = Parser(_file)
+    p = HTMLParser(_file, variables)
     sidenav_include_pos = -1
     p.pos["cmt_beg"] = -1
     p.pos["cmt_end"] = -1
@@ -358,32 +462,15 @@ def parse_file(_file:str, variables:dict[str,str]):
     # if file.count(COMMENT_BEGIN) != file.count(COMMENT_END):
 
     while i < len(p):  # at start of new line or end of comment
+        p.next_line()
         ptrace(f"Processing at i={i} in line {pos2line(p.file, i)}")
 
-        # replace variable usages in the current line
-        p.pos["line_end"] = p.file.find('\n', i)
-        if p.pos["line_end"] < 0: p.pos["line_end"] = len(p)
-        p.replace(i, p.pos["line_end"], replace_variables(p[i:p.pos["line_end"]], variables))
-        ptrace("> Line after replacing variables:", p.file[i:p.pos["line_end"]])
+        p.use_variables()
+        p.add_sidenav_headings()
 
-        # check if heading for sidenav in line
-        match = re.search(re_sidenav_heading, p[i:p.pos["line_end"]])
-        if match:
-            Sidenav.addEntry(match.groups()[1], f"#{match.groups()[0]}")
-            ptrace("> Found heading with id:", match.groups())
+        if not p.find_comment_begin(): continue
 
-        # look for comment
-        if p.pos["cmt_beg"] < 0:  # if not in comment, find next comment
-            p.pos["cmt_beg"] = p.file.find(COMMENT_BEGIN, i, p.pos["line_end"])
-            # ptrace(f"i={i}, line_end={line_end}, comment_begin={comment_begin}")
-            if p.pos["cmt_beg"] < 0:
-                i = p.pos["line_end"] + 1
-                continue
-            else:
-                # jump to comment_begin
-                old_i = i
-                i = p.pos["cmt_beg"] + len(COMMENT_BEGIN)  # after comment begin
-                ptrace(f"> Found comment begin, jumping from pos {old_i} to {i}")
+
 
         # in comment, i at the character after COMMENT_BEGIN
         p.pos["cmt_end"] = p.file.find(COMMENT_END, i) #, p.pos["line_end"])
@@ -578,7 +665,7 @@ if __name__ == "__main__":
             error(f"Invalid argument: {argv[i]}")
         i += 1
     # sanity checks
-    if not target_path: missing_arg("--input")
+    if not target_path: missing_arg("--target")
     if not os.path.isfile(target_path): error(f"Invalid target: {target_path} (does not exist)")
     if inplace: output_path = target_path
     if not output_path:
