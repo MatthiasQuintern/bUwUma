@@ -27,8 +27,13 @@ OUT_DIR 		= build
 # SOURCE FILES:
 # all SRC_FLS and all files (recursively) in the SRC_DIRS will be built
 # all files in PROJECT_DIR (not recursively) are source files
-SRC_DIRS 		= de en script style
+SRC_DIRS 		= de en script
 SRC_FLS 		= 
+
+# CSS FILES:
+# directories which may contain sass and scss to compile sass to a correspondig css in OUT_DIR/CSS_DIR (also css, it will simply be copied)
+CSS_DIRS		= style
+CSS_FILES 		= 
 
 # SOURCE FILES:
 # all RESOURCE_FLS and all files in the RESOURCE_DIRS will be copied to OUT_DIR
@@ -49,11 +54,17 @@ LANGS 			= de en
 # PREPROCESSOR
 # path to of the files that should be included
 INCLUDE_DIR 	= include
+# additional search paths passed to sass compiler
+SASS_INCLUDE_DIRS	= include/style
 
 
 # ADVANCED
 # the command to run the html preprocessor
 HTML_PP_CMD 	= python3 html-preprocessor --exit-on light
+# command to compile sass and scss files with
+# --indented is added for sass and --no-indented for scss
+# --source-maps-urls=absolute is appended for generating dependency files
+SASS_CMD 		= sass --color
 
 DEP_DIR 		= .dependencies
 
@@ -68,23 +79,27 @@ DEP_DIR 		= .dependencies
 # make everything relative to PROJECT_DIR
 _SRC_DIRS 		= $(addprefix $(PROJECT_DIR)/, $(SRC_DIRS))
 _SRC_FLS 		= $(addprefix $(PROJECT_DIR)/, $(SRC_FLS))
+_CSS_FLS 		= $(addprefix $(PROJECT_DIR)/, $(CSS_FLS))
+_CSS_DIRS 		= $(addprefix $(PROJECT_DIR)/, $(CSS_DIRS))
+_SASS_INCLUDE_DIRS = $(addprefix $(PROJECT_DIR)/, $(SASS_INCLUDE_DIRS))
 _RES_DIRS 		= $(addprefix $(PROJECT_DIR)/, $(RESOURCE_DIRS))
 _RES_FLS 		= $(addprefix $(PROJECT_DIR)/, $(RESOURCE_FLS))
 _COMMON_DIR 	= $(addprefix $(PROJECT_DIR)/, $(COMMON_DIR))
 _INCLUDE_DIR 	= $(addprefix $(PROJECT_DIR)/, $(INCLUDE_DIR))
 
 # NORMAL SRC
-# all SRC_DIRS + all subdirs of each srcdir
-_SRC_SUB_DIRS 	= $(foreach srcdir, $(_SRC_DIRS), $(shell find $(srcdir)/ -type d 2>/dev/null))
+# all SRC_DIRS + CSS_DIRS + all subdirs of each srcdir
+_SRC_SUB_DIRS 	= $(foreach srcdir, $(_SRC_DIRS) $(_CSS_DIRS), $(shell find $(srcdir)/ -type d 2>/dev/null))
 # add files in project dir
 _SRC_FLS		+= $(shell find $(PROJECT_DIR)/ -maxdepth 1 -type f)
 # add files src dirs, recursively
 _SRC_FLS		+= $(foreach srcdir, $(_SRC_DIRS), $(shell find $(srcdir)/ -type f 2>/dev/null))
-# OUT_DIRS 	 	= $(OUT_DIR) $(addprefix $(OUT_DIR)/, $(_SRC_SUB_DIRS))
-OUT_DIRS 		= $(OUT_DIR)/ $(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/%, $(_SRC_SUB_DIRS))
-# path of the source files after being processed
-# OUT_FLS 		= $($(notdir _SRC_FLS):%=$(OUT_DIR)/%)
-OUT_FLS 		= $(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/%, $(_SRC_FLS))
+_CSS_FLS		+= $(foreach srcdir, $(_CSS_DIRS), $(shell find $(srcdir)/ -type f 2>/dev/null))
+
+OUT_DIRS 		= $(OUT_DIR)/ $(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/%, $(_SRC_SUB_DIRS)) 
+# path of the (css/sass) source files after being processed
+OUT_FLS 		= $(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/%, $(_SRC_FLS)) 
+OUT_FLS			+= $(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/%, $(foreach cssfile, $(_CSS_FLS), $(shell echo $(cssfile) | sed 's/\.s[ac]ss$$/.css/')))
 
 # RESOURCES
 _RES_SUB_DIRS 	= $(foreach srcdir, $(_RES_DIRS), $(shell find $(srcdir)/ -type d 2>/dev/null))
@@ -108,11 +123,15 @@ _DEP_DIRS 		= $(sort $(patsubst $(OUT_DIR)/%, $(DEP_DIR)/%, $(OUT_DIRS) $(ML_OUT
 # needed for reading
 _DEP_FLS 		= $(shell find $(DEP_DIR) -type f -name '*.d' 2>/dev/null)
 
+# SASS, add load-paths
+_SASS_CMD 		= $(SASS_CMD) $(foreach includedir, $(_SASS_INCLUDE_DIRS), --load-path=$(includedir)) --source-map-urls=absolute
+
 # PRINTING
 FMT_VAR_SRC		="Variable '\e[1;34m%s\e[0m': \e[0;33m%s\e[0m\n"
 FMT_VAR_OUT		="Variable '\e[1;34m%s\e[0m': \e[0;35m%s\e[0m\n"
 FMT_DIR			="\e[1;34mMaking directory\e[0m: \e[0;35m%s\e[0m\n"
 FMT_OUT_HTML	="\e[1;34mBuilding html\e[0m \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
+FMT_OUT_CSS   	="\e[1;34mBuilding css\e[0m \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_OTHER	="\e[1;34mBuilding\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 
 FMT_OUT_ML_HTML="\e[1;34mBuilding html\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
@@ -140,6 +159,7 @@ print:
 	@printf $(FMT_VAR_OUT) "OUT_FLS" 		"$(OUT_FLS)"
 	@printf $(FMT_VAR_SRC) "_RES_FLS" 		"$(_RES_FLS)"
 	@printf $(FMT_VAR_OUT) "RES_OUT_FLS" 	"$(RES_OUT_FLS)"
+	@printf $(FMT_VAR_OUT) "_CSS_FLS" 		"$(_CSS_FLS)"
 ifdef COMMON_DIR
 	@printf $(FMT_VAR_SRC) "_ML_SRC_FLS" 	"$(_ML_SRC_FLS)"
 	@printf $(FMT_VAR_OUT) "ML_OUT_FLS" 	"$(ML_OUT_FLS)"
@@ -181,6 +201,21 @@ $(OUT_DIR)/%.html: $(PROJECT_DIR)/%.html | $(OUT_DIRS) $(_DEP_DIRS)
 	@#awk -i inplace '{FS="" sub(/<!--.*-->/,"")}1' $@
 	@#awk -i inplace '{if (NF != 0) print}' $@
 
+$(OUT_DIR)/%.css: $(PROJECT_DIR)/%.sass | $(OUT_DIRS) $(_DEP_DIRS)
+	@printf $(FMT_OUT_CSS) "$<" "$@";
+	@$(_SASS_CMD) --indented $< $@
+	@# generate a dependecy file from the source map and delete the map
+	@depfile=$(patsubst $(OUT_DIR)/%,$(DEP_DIR)/%,$@).d; echo -n  "$@: " > "$$depfile"; \
+		jq -r '.sources | @sh' $@.map | tr -d \' | sed 's|file://||g' >> "$$depfile"; \
+		rm $@.map
+$(OUT_DIR)/%.css: $(PROJECT_DIR)/%.scss | $(OUT_DIRS) $(_DEP_DIRS)
+	@printf $(FMT_OUT_CSS) "$<" "$@";
+	@$(_SASS_CMD) --no-indented $< $@
+	@# generate a dependecy file from the source map and delete the map
+	@depfile=$(patsubst $(OUT_DIR)/%,$(DEP_DIR)/%,$@).d; echo -n  "$@: " > "$$depfile"; \
+		jq -r '.sources | @sh' $@.map | tr -d \' | sed 's|file://||g' >> "$$depfile"; \
+		rm $@.map
+
 $(OUT_DIR)/%: $(PROJECT_DIR)/% | $(OUT_DIRS) $(RES_OUT_DIRS)
 	@printf $(FMT_OUT_OTHER) "$<" "$@"
 	@cp -r $< $@
@@ -196,8 +231,9 @@ stop:
 	killall nginx
 
 clean:
-	-rm $(OUT_FLS) $(ML_OUT_FLS) 2>/dev/null
-	-rm -r $(DEP_DIR) 2>/dev/null
+	-@rm $(OUT_FLS) $(ML_OUT_FLS) 2>/dev/null
+	-@rm -r $(DEP_DIR) 2>/dev/null
 
 cleaner:
-	-rm -r $(OUT_DIR)
+	-@rm -r $(OUT_DIR)
+	-@rm -r $(DEP_DIR) 2>/dev/null
