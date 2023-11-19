@@ -171,7 +171,7 @@ Ignored
 The generated sidenav
 
 #### `section`
-Group all following entries in named section.
+Group all following entries in named section. `section` may not appear in conditional blocks and multiline comments.
 
 **Argument**:
 The name of the section
