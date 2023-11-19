@@ -227,6 +227,8 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
             while p.i < len(p):  # at start of new line or end of comment
                 p.next_line()
                 ptrace(f"cmd_include: Processing at i={p.i} in line {pos2line(p.file, p.i)}")
+                # print(filename, p.i, pos2line(p.file, p.i))
+                # TODO: hangs here
 
                 if not p.find_comment_begin(): continue
                 if not p.find_comment_end(): continue
@@ -390,7 +392,7 @@ class HTMLParser(Parser):
     Parse a html file
     Each function operates the positon indicated by i until the position "line_end"
     """
-    def __init__(self, file, variables:dict[str, str]):
+    def __init__(self, file, variables:dict[str, str], remove_comments=False):
         super().__init__(file)
         self.i = 0
         self.variables = variables
@@ -402,10 +404,11 @@ class HTMLParser(Parser):
         self.pos["conditional_block_beg"] = -1  # char pos of the first char of the last block, if waiting for elif, else or endif
         self.state["cmd_in_cmt"] = False
         self.state["last_condition"] = False  # if the last if condition was true
+        self.remove_comments = remove_comments
 
     def next_line(self):
         """update i and line_end"""
-        self.pos["line_end"] = self.file.find('\n', self.i)
+        self.pos["line_end"] = self.file.find('\n', self.i+1)
         if self.pos["line_end"] < 0: self.pos["line_end"] = len(self)
 
     def use_variables(self):
@@ -479,7 +482,7 @@ class HTMLParser(Parser):
 
     def command_end(self):
         if self.pos["cmd_end"] == self.pos["cmt_end"]:  # reached end of comment
-            if self.state["cmd_in_cmt"]:
+            if self.state["cmd_in_cmt"] or self.remove_comments:
                 # remove comment tags if a command was found
                 remove_newline = 0
                 if self[self.pos["cmt_beg"]-1] == '\n' and self[self.pos["cmt_end"]+len(COMMENT_END)] == '\n':  # if the comment consumes the whole line, remove the entire line
@@ -502,8 +505,8 @@ class HTMLParser(Parser):
         # i = possible_command_end commented, because if something containing new commands is inserted we need to parse that as well
 
 
-def parse_file(_file:str, variables:dict[str,str]):
-    p = HTMLParser(_file, variables)
+def parse_file(_file:str, variables:dict[str,str], remove_comments):
+    p = HTMLParser(_file, variables, remove_comments=remove_comments)
     sidenav_include_pos = -1
 
     while p.i < len(p):  # at start of new line or end of comment
@@ -570,6 +573,7 @@ def parse_file(_file:str, variables:dict[str,str]):
             else:
                 cmd_output = ""
             p.replace_command_with_output(cmd_output)
+
         p.command_end()
 
     if sidenav_include_pos >= 0:
@@ -600,25 +604,17 @@ def substitute_variables(html:str, variables:dict[str, str]):
 """
 ************************************************************ COMMAND LINE ************************************************************
 """
-def missing_arg_val(arg):
-    print("Missing argument for", arg)
-    exit(1)
-
-def missing_arg(arg):
-    print("Missing ", arg)
-    exit(1)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="bUwUma html preprocessor")
     parser.add_argument("--input", action="store", help="path to the input file", required=True)
     parser.add_argument("--output", action="store", help="output to this file", default="")
     parser.add_argument("--inplace", action="store_true", help="overwrite input file")
-    parser.add_argument("--var", action="append", help="set a variable --var varname=value")
+    parser.add_argument("--var", action="append", help="set a variable --var varname=value", default=[])
     parser.add_argument("--output-deps", action="store", help="output a Makefile listing all dependencies", default="")
     parser.add_argument("--exit-on", action="store", help="exit when an error of the given severity occures", choices=["light", "serious", "critical"], default="serious")
-    parser.add_argument("--debug", action="store_true", help="be more verbose")
-    parser.add_argument("--trace", action="store_true", help="be extremly verbose")
+    parser.add_argument("--debug", action="store_true", help="be more verbose", default=False)
+    parser.add_argument("--trace", action="store_true", help="be extremly verbose", default=False)
+    parser.add_argument("--preserve-comments", action="store_true", help="do not remove normal html comments", default=False)
     variables:dict[str, str] = {}
 
     args = parser.parse_args()
@@ -633,8 +629,9 @@ if __name__ == "__main__":
     args.input = args.input.strip(" ")
     args.output = args.output.strip(" ")
     args.output_deps = args.output_deps.strip(" ")
-    DEBUG = args.debug
     TRACE = args.trace
+    if args.trace: args.debug = True
+    DEBUG = args.debug
 
     # sanity checks
     if not path.isfile(args.input):
@@ -656,8 +653,7 @@ if __name__ == "__main__":
     with open(args.input, "r") as file:
         target_html = file.read()
 
-
-    output_html = parse_file(target_html, variables)
+    output_html = parse_file(target_html, variables, not args.preserve_comments)
 
     # pdebug(f"Output: {output_html}")
 
