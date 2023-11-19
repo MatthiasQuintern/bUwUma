@@ -660,6 +660,8 @@ if __name__ == "__main__":
         target_html = file.read()
 
     output_html = parse_file(target_html, variables, not args.preserve_comments)
+    # remove empty lines
+    output_html = re.sub(r"[\t\r ]*\n(?:[\t\r ]*\n[\t\r ]*)+", r"\n", output_html)
 
     # pdebug(f"Output: {output_html}")
 
