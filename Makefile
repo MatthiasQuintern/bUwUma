@@ -1,6 +1,7 @@
 # ABOUT
 # - In this Makefile, 'building a file' means:
 # 	- if the file has a '.html' extension: run the html preprocessor on the file and place the output in the output directory
+# 	- elif the file has a '.sass' or '.scss' extension: run the sass compiler on the file and place the output in the output directory
 # 	- else: copy the file to the output directory
 # - Folder structure from source directories will be preserved in the output directory
 # - Abbreviations:
@@ -10,8 +11,6 @@
 #   - LANG: language
 #   - PP: preprocessor
 #   - DEP: dependency
-
-# TODO: fix that you have invoke make twice to build both languages
 
 #
 # NORMAL SETTINGS
