@@ -227,9 +227,6 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
             while p.i < len(p):  # at start of new line or end of comment
                 p.next_line()
                 ptrace(f"cmd_include: Processing at i={p.i} in line {pos2line(p.file, p.i)}")
-                # print(filename, p.i, pos2line(p.file, p.i))
-                # TODO: hangs here
-
                 if not p.find_comment_begin(): continue
                 if not p.find_comment_end(): continue
 
@@ -240,20 +237,17 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
                     pdebug(f"cmd_include Found command '{command}' with args '{cmd_args}'")
                     if command == "section":
                         if cmd_args.startswith(target_section):
-                            print(p.pos)
                             p.pos["start"] = max(p.pos["cmt_end"] + len(COMMENT_END), p.pos["line_end"] + 1)
-                            print(f">{content[p.pos['start']:p.pos['start']+1]}<")
                         elif p.pos["start"] >= 0:  #end
                             p.pos["end"] = max(p.pos["cmt_end"] + len(COMMENT_END), p.pos["line_end"] + 1)
                             # p.pos["end"] = p.pos["cmt_beg"]
                         p.replace_command_with_output("")
-                    p.command_end()
+                p.command_end()
                 if p.pos["start"] >= 0 and p.pos["end"] > 0: break
             if p.pos["start"] >= 0:
                 if p.pos["end"] < 0:
                     p.pos["end"] = len(p)
                 content = p[p.pos["start"]:p.pos["end"]]
-                print(content)
             else:
                 error(f"cmd_include: Could not find section {target_section} in file {filename}")
     except FileNotFoundError:
@@ -483,18 +477,21 @@ class HTMLParser(Parser):
     def command_end(self):
         if self.pos["cmd_end"] == self.pos["cmt_end"]:  # reached end of comment
             if self.state["cmd_in_cmt"] or self.remove_comments:
-                # remove comment tags if a command was found
                 remove_newline = 0
                 if self[self.pos["cmt_beg"]-1] == '\n' and self[self.pos["cmt_end"]+len(COMMENT_END)] == '\n':  # if the comment consumes the whole line, remove the entire line
                     remove_newline = 1
-                # remove comment if done
-                ptrace(f"Deleting opening comment tags")
-                self.remove(self.pos["cmt_beg"], self.pos["cmt_beg"] + len(COMMENT_BEGIN))
-                self.remove(self.pos["cmt_end"], self.pos["cmt_end"] + len(COMMENT_END) + remove_newline, ignore_bounds=["cmt_end", "cmd_end", "line_end"])
-                # process the line again, because a command might have inserted new comments
-                self.i -= len(COMMENT_BEGIN)
+                if self.state["cmd_in_cmt"]:  # remove comment tags if a command was found
+                    ptrace(f"Deleting opening comment tags")
+                    self.remove(self.pos["cmt_beg"], self.pos["cmt_beg"] + len(COMMENT_BEGIN))
+                    self.remove(self.pos["cmt_end"], self.pos["cmt_end"] + len(COMMENT_END) + remove_newline, ignore_bounds=["cmt_end", "cmd_end", "line_end"])
+                    # process the line again, because a command might have inserted new comments
+                    self.i -= len(COMMENT_BEGIN)
+                elif self.remove_comments:  # remove entire comment
+                    self.remove(self.pos["cmt_beg"], self.pos["cmt_end"] + len(COMMENT_END) + remove_newline, ignore_bounds=["cmt_end", "cmd_beg", "cmd_end", "line_end"])
+                    self.i = self.pos["cmt_beg"]
             self.state["cmd_in_cmt"] = False
             self.pos["cmt_beg"] = -1
+            self.pos["cmd_beg"] = -1
             self.pos["cmt_end"] = -1
             self.pos["cmd_end"] = -1
         else:  # multiline comment
