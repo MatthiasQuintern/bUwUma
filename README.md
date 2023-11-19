@@ -97,6 +97,19 @@ Same as `set`, but it returns the value of the variable that is being set. This 
 ### default
 Same as `set`, but it sets the variable's value only if it has no value yet.
 
+### unset 
+Unset a variable
+
+**Synopsis**:
+Unset `varname`, it will no longer be defined and can therefor be set with `default` again.
+`<!-- #unset varname -->`
+
+**Argument**:
+Name of the variable
+
+**Return Value**:
+Empty string
+
 ---
 
 ### comment

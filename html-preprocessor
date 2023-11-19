@@ -273,7 +273,7 @@ def cmd_return(args: str, variables:dict[str, str]={}) -> str:
     # pdebug(f"cmd_set: varname='{args[:space]}, 'arg='{args[space+1:]}', variables='{variables}'")
     if not (space > 0 and space < len(args)-1):
         variables[args] = ""
-        pdebug(f"cmd_set: Setting to emptry string: {args}")
+        pdebug(f"cmd_set: Setting to empty string: {args}")
     else:
         varname = args[:space]
         variables[varname] = ""
@@ -308,6 +308,14 @@ def cmd_set(args: str, variables:dict[str, str]={}) -> str:
     cmd_return(args, variables)
     return ""
 
+def cmd_unset(args: str, variables:dict[str, str]={}) -> str:
+    variable = args.strip(' ')
+    if variable not in variables:
+        pdebug(f"unset: variable '{variable}' is not set", level=error_levels["light"])
+    else:
+        variables.pop(variable)
+    return ""
+
 def cmd_default(args: str, variables:dict[str, str]={}) -> str:
     separator = args.find(' ')
     if args[:separator] not in variables:
@@ -331,8 +339,9 @@ def cmd_warning(args: str, variables:dict[str, str]={}) -> str:
 command2function:dict[str, Callable[[str, dict[str,str]], str]] = {
     "include":      cmd_include,
     "section":      cmd_section,
-    "set":          cmd_set,
     "return":       cmd_return,
+    "set":          cmd_set,
+    "unset":        cmd_unset,
     "default":      cmd_default,
     "comment":      cmd_comment,
     "uncomment":    cmd_uncomment,
