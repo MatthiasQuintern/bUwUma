@@ -182,6 +182,7 @@ class Sidenav:
             space = len(args)
         cmd = args[:space]
         cmd_args = ""
+        pdebug(f"cmd_sidenav: cmd='{cmd}' cmd_args='{cmd_args}'")
         if 0 < space and space < len(args) - 1:
             cmd_args = args[space+1:].strip(" ")
         if cmd == "skip":
@@ -242,8 +243,15 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
                             p.pos["end"] = max(p.pos["cmt_end"] + len(COMMENT_END), p.pos["line_end"] + 1)
                             # p.pos["end"] = p.pos["cmt_beg"]
                         p.replace_command_with_output("")
-                p.command_end()
-                if p.pos["start"] >= 0 and p.pos["end"] > 0: break
+                        p.command_end()  # remove the command (+comment)
+                        if p.pos["start"] >= 0 and p.pos["end"] > 0: break
+                        continue
+                # section cmd in multiline comment is not supported, so simply jump to end of comment
+                p.i = p.pos["cmt_end"] + len(COMMENT_END)
+                p.pos["cmt_beg"] = -1
+                p.pos["cmd_beg"] = -1
+                p.pos["cmt_end"] = -1
+                p.pos["cmd_end"] = -1
             if p.pos["start"] >= 0:
                 if p.pos["end"] < 0:
                     p.pos["end"] = len(p)
