@@ -17,46 +17,77 @@
 # change these to fir your project
 #
 
-# root dir for the project, all other paths relative to PROJECT_DIR (except for OUT_DIR and DEP_DIR)
+# root dir for the project, most other paths are relative to PROJECT_DIR
+# [absolute or relative to current working directory]
 PROJECT_DIR 	= src
 
-# path where final website will be in, this one is not relative to PROJECT_DIR
+# path where final website will be in
+# [absolute or relative to current working directory]
 OUT_DIR 		= build
 
 # SOURCE FILES:
 # all SRC_FLS and all files (recursively) in the SRC_DIRS will be built
 # all files in PROJECT_DIR (not recursively) are source files
+# [relative to PROJECT_DIR]
 SRC_DIRS 		= de en script
 SRC_FLS 		= 
 
 # CSS FILES:
 # directories which may contain sass and scss to compile sass to a correspondig css in OUT_DIR/CSS_DIR (also css, it will simply be copied)
+# [relative to PROJECT_DIR]
 CSS_DIRS		= style
 CSS_FILES 		= 
 
 # RESOURCE FILES:
 # all RESOURCE_FLS and all files in the RESOURCE_DIRS will be copied to OUT_DIR
+# [relative to PROJECT_DIR]
 RESOURCE_DIRS 	= resources 
 RESOURCE_FLS	= 
 
 # THUMBNAILS:
-# if set, thumbnails for all resource files will be generated and placed in THUMB_OUT_DIR (relative to OUT_DIR)
+# if set, thumbnails for all resource files having an extension in THUMB_FOR_TYPES will be generated and placed relative to THUMB_OUT_DIR
+# [relative to OUT_DIR]
 THUMB_OUT_DIR 	= thumbs
+# build thumbnails for these types: supported: mp3, flac, wav, pdf and all image formats that magick can handle
+THUMB_FOR_TYPES = png gif jpg jpeg webp pdf mp4 mp3 flac wav
+# filetype for the thumbnails. (pdfs will always have .jpg)
+THUMB_TYPE 	= jpg
+# size for the thumbnails (not respected by pdf)
+THUMB_SIZE 	= 300
 
 # MULTI-LANG SOURCE FILES:
 # the files in COMMON_DIR will be built for all LANGS:
+# for example:
+# 	LANGS = de en
+# 	PROJECT_DIR/COMMON_DIR/home.html
+# 	-> OUT_DIR/de/home.html
+# 	-> OUT_DIR/en/home.html
 # foreach html-file in COMMON_DIR:
 # 	foreach lang in LANGS:
 # 		run HTML_PP_CMD with --var lang=lang on file and output to OUT_DIR without the COMMON_DIR prefix, so COMMON_DIR/subdir/file.html -> OUT_DIR/lang/subdir/file.html
-# all non-html files will handled the same way, but without the preprocessor being run on them. They are simply copied
+# For all .html files, the proprocessor will make the variable `lang` available, for example lang=de
+# All non-html files will handled the same way, but without the preprocessor being run on them. They are simply copied.
 # leave COMMON_DIR empty to disable multi-lang feature
-COMMON_DIR 		= 
+# [relative to PROJECT_DIR]
+COMMON_DIR 		= common
 LANGS 			= de en
+
+# SITEMAP
+# sitemap relative to OUT_DIR, leave blank to not generate a sitemap [relative to OUT_DIR]
+SITEMAP 			= sitemap.xml 
+# base url of the website, without trailing /
+WEBSITE_URL 		= https://quintern.xyz
+# file required during build process for sitemap generation [absolute or relative to current working directory]
+SITEMAP_TEMP_FILE 	= .sitemap.pkl
+# comment to keep the file extension on sitemap entries
+SITEMAP_REMOVE_EXT  = 1
 
 # PREPROCESSOR
 # path to of the files that should be included
+# [relative to PROJECT_DIR]
 INCLUDE_DIR 	= include
 # additional search paths passed to sass compiler
+# [relative to PROJECT_DIR]
 SASS_INCLUDE_DIRS	= include/style
 
 
@@ -68,8 +99,8 @@ HTML_PP_CMD 	= python3 html-preprocessor --exit-on light
 # --source-maps-urls=absolute is appended for generating dependency files
 SASS_CMD 		= sass --color
 
+# [absolute or relative to current working directory]
 DEP_DIR 		= .dependencies
-
 
 
 #
@@ -121,10 +152,8 @@ ML_OUT_FLS 		= $(foreach lang, $(LANGS), $(patsubst $(_COMMON_DIR)/%, $(ML_OUT_D
 endif
 
 ifdef THUMB_OUT_DIR
-_THUMB_FOR_TYPES = png gif jpg jpeg webp pdf 
-_THUMB_TYPE 	= jpg
 # files for which to generate thumbnails
-_THUMB_FLS 		= $(filter $(foreach type, $(_THUMB_FOR_TYPES), %.$(type)), $(_RES_FLS))
+_THUMB_FLS 		= $(filter $(foreach type, $(THUMB_FOR_TYPES), %.$(type)), $(_RES_FLS))
 THUMB_OUT_FLS 	= $(addsuffix .jpg, $(basename $(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/$(THUMB_OUT_DIR)/%, $(_THUMB_FLS))))
 THUMB_OUT_DIRS	= $(sort $(dir $(THUMB_OUT_FLS)))  # sort for removing duplicates
 endif
@@ -133,6 +162,14 @@ endif
 _DEP_DIRS 		= $(sort $(patsubst $(OUT_DIR)/%, $(DEP_DIR)/%, $(OUT_DIRS) $(ML_OUT_DIRS)))
 # needed for reading
 _DEP_FLS 		= $(shell find $(DEP_DIR) -type f -name '*.d' 2>/dev/null)
+
+ifdef SITEMAP
+	_SITEMAP	= $(addprefix $(OUT_DIR)/, $(SITEMAP))
+	HTML_PP_CMD += --sitemap-temp-file "$(SITEMAP_TEMP_FILE)" --sitemap-base-url $(WEBSITE_URL) --sitemap-webroot-dir "$(OUT_DIR)"
+endif
+ifdef SITEMAP_REMOVE_EXT
+	HTML_PP_CMD += --sitemap-remove-ext
+endif
 
 # SASS, add load-paths
 _SASS_CMD 		= $(SASS_CMD) $(foreach includedir, $(_SASS_INCLUDE_DIRS), --load-path=$(includedir)) --source-map-urls=absolute
@@ -145,6 +182,7 @@ FMT_OUT_HTML	="\e[1;34mBuilding html\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_CSS   	="\e[1;34mBuilding css\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_THUMB	="\e[1;34mBuilding thumbnail\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_OTHER	="\e[1;34mBuilding\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
+FMT_OUT_SITEMAP	="\e[1;34mBuilding sitemap\e[0m: \e[1;35m%s\e[0m\n"
 
 FMT_OUT_ML_HTML="\e[1;34mBuilding html\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_ML_OTHER="\e[1;34mBuilding\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
@@ -159,7 +197,7 @@ FMT_OUT_ML_OTHER="\e[1;34mBuilding\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m
 include $(_DEP_FLS)
 
 all: normal multilang resources thumbnails
-normal:	$(OUT_FLS)
+normal:	$(_SITEMAP) $(OUT_FLS)
 multilang: $(ML_OUT_FLS)
 resources: $(RES_OUT_FLS)
 thumbnails: $(THUMB_OUT_FLS)
@@ -217,11 +255,19 @@ $(OUT_DIR)/$(THUMB_OUT_DIR)/%.jpg: | $(THUMB_OUT_DIRS)
 	sources=($(_THUMB_FLS)); \
 	source=$$(printf  "%s\n" $${sources[@]} | grep "$$target"'\.'); \
 	printf $(FMT_OUT_THUMB) "$$source" "$$fulltarget"; \
-	if [ "$${source##*.}" = "pdf" ]; then \
-		pdftoppm -f 1 -singlefile -jpeg -r 50 "$$source" "$${fulltarget%.*}"; \
-	else \
-		magick "$$source" -thumbnail '100x100>' "$@"; \
-	fi; \
+	case "$${source##*.}" in \
+	"mp4-") ffmpegthumbnailer -i "$$source" -o "$$fulltarget" -s 300 -q 5;; \
+	"pdf") pdftoppm -f 1 -singlefile -jpeg -r 50 "$$source" "$${fulltarget%.*}";; \
+	"mp3"|"flac"|"wav") ffmpeg -hide_banner -i "$$source" "$$fulltarget" -y >/dev/null;; \
+	"*") magick "$$source[0]" -thumbnail '$(THUMB_SIZE)x$(THUMB_SIZE)>' "$@";; \
+	esac
+
+# SITEMAP
+ifdef _SITEMAP
+$(_SITEMAP): $(OUT_FLS)  $(ML_OUT_FLS)  # build sitemap after all other files
+	@printf $(FMT_OUT_SITEMAP) "$@"
+	@$(HTML_PP_CMD) --sitemap-generate "$@"
+endif
 
 
 #
@@ -249,9 +295,11 @@ $(OUT_DIR)/%.css: $(PROJECT_DIR)/%.scss | $(OUT_DIRS) $(_DEP_DIRS)
 		jq -r '.sources | @sh' $@.map | tr -d \' | sed 's|file://||g' >> "$$depfile"; \
 		rm $@.map
 
+# this rule must be last!
 $(OUT_DIR)/%: $(PROJECT_DIR)/% | $(OUT_DIRS) $(RES_OUT_DIRS)
 	@printf $(FMT_OUT_OTHER) "$<" "$@"
 	@cp -r $< $@
+
 
 
 # .DEFAULT:
@@ -264,7 +312,7 @@ stop:
 	killall nginx
 
 clean:
-	-@rm $(OUT_FLS) $(ML_OUT_FLS) 2>/dev/null
+	-@rm $(OUT_FLS) $(ML_OUT_FLS) $(SITEMAP_TEMP_FILE) $(SITEMAP) 2>/dev/null
 	-@rm -r $(DEP_DIR) 2>/dev/null
 
 cleaner:

@@ -174,6 +174,7 @@ An entry is a html heading with a id: `<h1 id=myheading>This heading will be lin
 `<!-- #sidenav sidenav-command arguments -->`
 sidenav-command must be one of the following:
 
+
 #### `include`
 Include the generated sidenav at this position. This command will always be executed last, after the whole file has been parsed.
 
@@ -182,6 +183,7 @@ Ignored
 
 **Return Value**:
 The generated sidenav
+
 
 #### `section`
 Group all following entries in named section. `section` may not appear in conditional blocks and multiline comments.
@@ -192,6 +194,7 @@ The name of the section
 **Return Value**
 Empty string
 
+
 #### `name`
 Use a custom name instead of the heading itself for the link to the next heading.
 
@@ -200,6 +203,7 @@ The link-name of the next heading
 
 **Return Value**:
 Empty string
+
 
 #### `custom`
 Include a custom link in the sidenav.
@@ -214,6 +218,64 @@ Must be `href="..." name="..."`. Either single `'` or double `"` quotes are requ
 Empty string
 
 ---
+
+### sitemap
+Used for automatically generating a `sitemap.xml` for the website.
+
+#### `include`
+Include the current page in the sitemap
+
+**Synopsis**:
+`<!-- #sitemap include -->`
+`<!-- #sitemap include https://use.custom.link/for-this/site -->`
+
+**Argument**:
+Optional: Use a different link for this page
+
+**Return Value**:
+Empty string
+
+
+#### `priority`
+Set the `priority` field
+
+**Synopsis**:
+`<!-- #sitemap priority 0.8 -->`
+
+**Argument**:
+Float between 0.0 and 1.0
+
+**Return Value**:
+Empty string
+
+
+#### `changefreq`
+Set the `changefreq` field
+
+**Synopsis**:
+`<!-- #sitemap changefreq never -->`
+
+**Argument**:
+One of *always, hourly, daily, weekly, monthly, yearly, never*
+
+**Return Value**:
+Empty string
+
+
+#### `lastmod`
+Set the `lastmod` field
+
+**Synopsis**:
+`<!-- #sitemap lastmod 2023-12-29T14:00:05+01:00 -->`
+
+**Argument**:
+The lastmod date in w3c date format
+
+**Return Value**:
+Empty string
+
+---
+
 
 ## Pitfalls
 - The `#include` command must not be in the last line of the file

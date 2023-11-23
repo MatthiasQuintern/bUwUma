@@ -5,6 +5,7 @@ import re
 from sys import argv
 from collections.abc import Callable
 import argparse
+import pickle
 
 """
 TODO:
@@ -27,6 +28,11 @@ sidenav_content_section = "<li class=\"sidenav_section\">#name</li>"
 
 exit_on_include_failure = False
 
+sitemap_begin = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n"""
+sitemap_end = "</urlset>"
+
 """
 ************************************************************ REGULAR EXPRESSIONS ************************************************************
 """
@@ -47,6 +53,10 @@ re_variable_use = r"#\$\(([a-zA-Z0-9_]+)\)"
 """ only in comments """
 re_preprocessor_command = r"#([a-zA-Z]+) *(.*) *"
 
+# https://www.w3.org/TR/NOTE-datetime
+re_w3cdate = r"\d{4}-(?)]-\d{2}"
+r"\d{4}-(?:0[1-9]|1[0-2])-(?:[0-2]\d|3[01])(T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d([\+\-](?:0\d|1[0-2]):[0-5]\d)?)?"
+
 COMMENT_BEGIN = "<!--"
 COMMENT_END = "-->"
 
@@ -66,6 +76,9 @@ error_levels = {
     "critical": 2,
 }
 exit_on_error_level = error_levels["serious"]
+
+# url that the currently processed file have
+current_file_url = ""
 
 
 """
@@ -122,6 +135,86 @@ def evaluate_condition(input_string) -> bool:
         error(f"Pythonized condition is invalid: {condition}", level=error_levels["light"])
         return False
 
+"""
+************************************************************ SITEMAP ************************************************************
+"""
+class Sitemap:
+    urls:dict = {}
+    def __init__(self, url=None):
+        self.url = url
+        self.priority = None
+        self.changefreq = None
+        self.lastmod = None
+
+    def set_url(self, url):
+        self.url = url
+
+    def set_priority(self, priority):
+        try:
+            priority = float(priority)
+        except ValueError:
+            error(f"Sitemap: invalid priority: '{priority}'", level=error_levels["serious"])
+        if not (type(priority) == float and 0.0 <= priority and priority <= 1.0):
+            error(f"Sitemap: invalid priority: '{priority}'", level=error_levels["serious"])
+        self.priority = priority
+
+    def set_changefreq(self, changefreq):
+        if not (type(changefreq) == str and changefreq in ["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"]):
+            error(f"Sitemap: invalid changefreq: '{changefreq}'", level=error_levels["serious"])
+        self.changefreq = changefreq
+
+    def set_lastmod(self, lastmod):
+        if not (type(lastmod) == str and re.fullmatch(re_w3cdate, lastmod)):
+            error(f"Sitemap: invalid lastmod: '{lastmod}'", level=error_levels["serious"])
+        self.lastmod = lastmod
+
+    def get_entry(self):
+        s = f"<url>\n\t<loc>{self.url}</loc>"
+        if self.priority is not None: s += f"\n\t<priority>{self.priority}</priority>"
+        if self.changefreq is not None: s += f"\n\t<changefreq>{self.changefreq}</changefreq>"
+        if self.lastmod is not None: s += f"\n\t<lastmod>{self.lastmod}</lastmod>"
+        s += "\n</url>"
+        return s
+
+    def __repr__(self) -> str:
+        return f"Sitemap(url={self.url}, priority={self.priority}, changefreq={self.changefreq}, lastmod={self.lastmod})"
+
+    @staticmethod
+    def gen_sidemap():
+        s = sitemap_begin
+        for url in Sitemap.urls.values():
+            s += "\t" + url.get_entry().replace("\n", "\n\t").strip("\t") + "\n"
+        s += sitemap_end
+        return s
+
+    @staticmethod
+    def cmd_sitemap(args:str, variables:dict[str,str]) -> str:
+        space = args.find(" ")
+        if space < 0:
+            space = len(args)
+        cmd = args[:space]
+        cmd_args = ""
+
+        if 0 < space and space < len(args) - 1:
+            cmd_args = args[space+1:].strip(" ")
+        pdebug(f"cmd_sitemap: cmd='{cmd}' cmd_args='{cmd_args}'")
+        if not current_file_url in Sitemap.urls:
+            Sitemap.urls[current_file_url] = Sitemap()
+        if cmd == "include":
+            if cmd_args:
+                Sitemap.urls[current_file_url].set_url(cmd_args)
+            else:
+                Sitemap.urls[current_file_url].set_url(current_file_url)
+        elif cmd == "priority":
+            Sitemap.urls[current_file_url].set_priority(cmd_args)
+        elif cmd == "changefreq":
+            Sitemap.urls[current_file_url].set_changefreq(cmd_args)
+        elif cmd == "lastmod":
+            Sitemap.urls[current_file_url].set_lastmod(cmd_args)
+        else:
+            error(f"cmd_sitemap: Invalid command '{cmd}'", error_levels["serious"])
+        ptrace(f"Sitemap[{current_file_url}] is now: {Sitemap.urls[current_file_url]}")
+        return ""
 
 
 """
@@ -182,9 +275,9 @@ class Sidenav:
             space = len(args)
         cmd = args[:space]
         cmd_args = ""
-        pdebug(f"cmd_sidenav: cmd='{cmd}' cmd_args='{cmd_args}'")
         if 0 < space and space < len(args) - 1:
             cmd_args = args[space+1:].strip(" ")
+        pdebug(f"cmd_sidenav: cmd='{cmd}' cmd_args='{cmd_args}'")
         if cmd == "skip":
             Sidenav.skipNext()
         elif cmd == "section":
@@ -354,6 +447,7 @@ command2function:dict[str, Callable[[str, dict[str,str]], str]] = {
     "comment":      cmd_comment,
     "uncomment":    cmd_uncomment,
     "sidenav":      Sidenav.cmd_sidenav,
+    "sitemap":      Sitemap.cmd_sitemap,
     "warning":      cmd_warning,
     "error":        cmd_error,
 }
@@ -620,15 +714,20 @@ def substitute_variables(html:str, variables:dict[str, str]):
 """
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="bUwUma html preprocessor")
-    parser.add_argument("--input", action="store", help="path to the input file", required=True)
+    parser.add_argument("--input", action="store", help="path to the input file", default="")
     parser.add_argument("--output", action="store", help="output to this file", default="")
     parser.add_argument("--inplace", action="store_true", help="overwrite input file")
+    parser.add_argument("--preserve-comments", action="store_true", help="do not remove normal html comments", default=False)
     parser.add_argument("--var", action="append", help="set a variable --var varname=value", default=[])
     parser.add_argument("--output-deps", action="store", help="output a Makefile listing all dependencies", default="")
+    parser.add_argument("--sitemap-generate", action="store", help="generate the sitemap from the sitemap-temp-file", default="")
+    parser.add_argument("--sitemap-temp-file", action="store", help="file for storing sitemap data during build process", default="/tmp/sitemap.pkl")
+    parser.add_argument("--sitemap-webroot-dir", action="store", help="directory of the webroot, without trailing /. This will be removed from the output path for generating the sitemap url entry", default="")
+    parser.add_argument("--sitemap-base-url", action="store", help="base url of the website, without trailing /", default="https://www.example.com")
+    parser.add_argument("--sitemap-remove-ext", action="store_true", help="remove the file extenstion in the sitemap entry")
     parser.add_argument("--exit-on", action="store", help="exit when an error of the given severity occures", choices=["light", "serious", "critical"], default="serious")
     parser.add_argument("--debug", action="store_true", help="be more verbose", default=False)
     parser.add_argument("--trace", action="store_true", help="be extremly verbose", default=False)
-    parser.add_argument("--preserve-comments", action="store_true", help="do not remove normal html comments", default=False)
     variables:dict[str, str] = {}
 
     args = parser.parse_args()
@@ -643,47 +742,81 @@ if __name__ == "__main__":
     args.input = args.input.strip(" ")
     args.output = args.output.strip(" ")
     args.output_deps = args.output_deps.strip(" ")
+    args.sitemap_temp_file = args.sitemap_temp_file.strip(" ")
+    args.sitemap_generate = args.sitemap_generate.strip(" ")
     TRACE = args.trace
     if args.trace: args.debug = True
     DEBUG = args.debug
 
-    # sanity checks
-    if not path.isfile(args.input):
-        parser.error(f"Invalid input file:: {args.input}")
-    if args.output:
-        if not path.isdir(path.dirname(args.output)):
-            parser.error(f"Invalid path to output file - directory does not exist: '{path.dirname(args.output)}'")
-    elif args.inplace:
-        args.output = args.input
-    if args.inplace and args.output:
-        parser.error(f"Only one of --output or --inplace mut be given")
-    if args.output_deps:
-        if not path.isdir(path.dirname(args.output_deps)):
-            parser.error(f"Invalid path to dependency file - directory does not exist: '{path.dirname(args.output_deps)}'")
-        if not args.output:
-            parser.error(f"--output-deps requires either --output <file> our --inplace")
+    # either input file or sitemap_generate is required
+    if not (bool(args.input) ^ bool(args.sitemap_generate)):
+        parser.error(f"Exactly one if --input or --sitemap-generate must be given")
 
-    # get html
-    with open(args.input, "r") as file:
-        target_html = file.read()
+    if args.input:
+        if args.sitemap_webroot_dir:
+            current_file_url = args.sitemap_base_url + args.output.replace(args.sitemap_webroot_dir, "")
+        else:
+            current_file_url = args.sitemap_base_url + args.output
 
-    output_html = parse_file(target_html, variables, not args.preserve_comments)
-    # remove empty lines
-    output_html = re.sub(r"[\t\r ]*\n(?:[\t\r ]*\n[\t\r ]*)+", r"\n", output_html)
+        if args.sitemap_remove_ext:
+            current_file_url = os.path.splitext(current_file_url)[0]
 
-    # pdebug(f"Output: {output_html}")
+        pdebug(f"current_file={current_file_url}")
 
-    # save
-    if args.output:
-        with open(args.output, "w") as file:
-            file.write(output_html)
-    else:
-        print(output_html)
+        # sanity checks
+        if not path.isfile(args.input):
+            parser.error(f"Invalid input file:: {args.input}")
+        if args.output:
+            if not path.isdir(path.dirname(args.output)):
+                parser.error(f"Invalid path to output file - directory does not exist: '{path.dirname(args.output)}'")
+        elif args.inplace:
+            args.output = args.input
+        if args.inplace and args.output:
+            parser.error(f"Only one of --output or --inplace mut be given")
+        if args.output_deps:
+            if not path.isdir(path.dirname(args.output_deps)):
+                parser.error(f"Invalid path to dependency file - directory does not exist: '{path.dirname(args.output_deps)}'")
+            if not args.output:
+                parser.error(f"--output-deps requires either --output <file> our --inplace")
 
-    if args.output_deps:
-        if args.output != args.input:
-            glob_dependcies.append(args.input)
-        depfile = generate_dependecy_file(args.output, glob_dependcies)
-        pdebug(f"Writing dependency file to {os.path.abspath(args.output_deps)}: {depfile}")
-        with open(args.output_deps, "w") as file:
-            file.write(depfile)
+        if args.sitemap_temp_file:
+            if path.isfile(args.sitemap_temp_file):
+                with open(args.sitemap_temp_file, "rb") as file:
+                    Sitemap.urls = pickle.load(file)
+
+        # get html
+        with open(args.input, "r") as file:
+            target_html = file.read()
+
+        output_html = parse_file(target_html, variables, not args.preserve_comments)
+        # remove empty lines
+        output_html = re.sub(r"[\t\r ]*\n(?:[\t\r ]*\n[\t\r ]*)+", r"\n", output_html)
+
+        # pdebug(f"Output: {output_html}")
+
+        # save
+        if args.output:
+            with open(args.output, "w") as file:
+                file.write(output_html)
+        else:
+            print(output_html)
+
+        if args.output_deps:
+            if args.output != args.input:
+                glob_dependcies.append(args.input)
+            depfile = generate_dependecy_file(args.output, glob_dependcies)
+            pdebug(f"Writing dependency file to {os.path.abspath(args.output_deps)}: {depfile}")
+            with open(args.output_deps, "w") as file:
+                file.write(depfile)
+        if args.sitemap_temp_file:
+            with open(args.sitemap_temp_file, "wb") as file:
+                pickle.dump(Sitemap.urls, file)
+    else:  # sitemap_generate
+        if not path.isfile(args.sitemap_temp_file):
+            parser.error(f"Invalid sitemap-temp-file: '{args.sitemap_temp_file}'")
+        with open(args.sitemap_temp_file, "rb") as file:
+            Sitemap.urls = pickle.load(file)
+        sitemap = Sitemap.gen_sidemap()
+        pdebug(f"Writing sitemap to {os.path.abspath(args.sitemap_generate)}")
+        with open(args.sitemap_generate, "w") as file:
+            file.write(sitemap)
