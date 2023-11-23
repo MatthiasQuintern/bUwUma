@@ -113,7 +113,7 @@ SASS_INCLUDE_DIRS	= include/style
 
 # ADVANCED
 # the command to run the html preprocessor
-HTML_PP_CMD 	= python3 html-preprocessor --exit-on light --debug --trace
+HTML_PP_CMD 	= python3 html-preprocessor --exit-on light
 # command to compile sass and scss files with
 # --indented is added for sass and --no-indented for scss
 # --source-maps-urls=absolute is appended for generating dependency files
@@ -220,10 +220,10 @@ FMT_OUT_THUMB	="\e[1;34mGenerating thumbnail\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s
 FMT_OUT_SITEMAP	="\e[1;34mGenerating sitemap\e[0m: \e[1;35m%s\e[0m\n"
 FMT_OUT_FAVICON	="\e[1;34mGenerating favicon\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_OTHER	="\e[1;34mBuilding\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
-FMT_OUT_ML_HTML="\e[1;34mBuilding html\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
-FMT_OUT_ML_OTHER="\e[1;34mBuilding\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
-.SUFFIXES:
-.SUFFIXES: .html .md
+FMT_OUT_ML_HTML ="\e[1;34mBuilding html\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
+FMT_OUT_ML_OTHER ="\e[1;34mBuilding\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
+# .SUFFIXES:
+# .SUFFIXES: .html .md
 
 .PHONY: default normal multilang resources sitemap favicons thumbnails print start stop clean cleaner
 
@@ -364,7 +364,7 @@ stop:
 	killall nginx
 
 clean:
-	-@rm $(OUT_FLS) $(ML_OUT_FLS) $(SITEMAP_TEMP_FILE) $(SITEMAP) $(FAVICONS) 2>/dev/null
+	-@rm $(OUT_FLS) $(ML_OUT_FLS) $(SITEMAP_TEMP_FILE) $(SITEMAP) 2>/dev/null
 	-@rm -r $(DEP_DIR) 2>/dev/null
 
 cleaner:
