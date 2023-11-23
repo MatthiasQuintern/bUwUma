@@ -44,17 +44,6 @@ CSS_FILES 		=
 RESOURCE_DIRS 	= resources 
 RESOURCE_FLS	= 
 
-# THUMBNAILS:
-# if set, thumbnails for all resource files having an extension in THUMB_FOR_TYPES will be generated and placed relative to THUMB_OUT_DIR
-# [relative to OUT_DIR]
-THUMB_OUT_DIR 	= thumbs
-# build thumbnails for these types: supported: mp3, flac, wav, pdf and all image formats that magick can handle
-THUMB_FOR_TYPES = png gif jpg jpeg webp pdf mp4 mp3 flac wav
-# filetype for the thumbnails. (pdfs will always have .jpg)
-THUMB_TYPE 	= jpg
-# size for the thumbnails (not respected by pdf)
-THUMB_SIZE 	= 300
-
 # MULTI-LANG SOURCE FILES:
 # the files in COMMON_DIR will be built for all LANGS:
 # for example:
@@ -67,13 +56,44 @@ THUMB_SIZE 	= 300
 # 		run HTML_PP_CMD with --var lang=lang on file and output to OUT_DIR without the COMMON_DIR prefix, so COMMON_DIR/subdir/file.html -> OUT_DIR/lang/subdir/file.html
 # For all .html files, the proprocessor will make the variable `lang` available, for example lang=de
 # All non-html files will handled the same way, but without the preprocessor being run on them. They are simply copied.
-# leave COMMON_DIR empty to disable multi-lang feature
+# leave COMMON_DIR blank to disable multi-lang feature
 # [relative to PROJECT_DIR]
 COMMON_DIR 		= common
 LANGS 			= de en
 
+# FAVICON
+# image from which the favicons will be generated
+# leave FAVICON_SRC blank to not generate favicons
+# [relative to PROJECT_DIR]
+FAVICON_SRC		= resources/favicon.png
+# directory where all genreated favicons will be placed
+# [relative to OUT_DIR]
+FAVICON_DIR		= favicon
+# in addition to the ones below, a favicon.ico containing the 16x16, 32x32 and 48x48will be generated
+# all apple-touch-icon-XXxXX.png sizes
+APPLE_ICON_SIZES 	= 180x180
+# all mstile-XXxXX.png sizes
+WINDOWS_ICON_SIZES 	= 150x150
+# all android-chrome-XXxXX.png sizes
+ANDROID_ICON_SIZES 	= 192x192 512x512
+# all favicon-XXxXX.png sizes
+FAVICON_ICON_SIZES 	= 16x16 32x32 64x64
+
+# THUMBNAILS:
+# thumbnails for all resource files having an extension in THUMB_FOR_TYPES will be generated and placed relative to THUMB_OUT_DIR
+# leave THUMB_OUT_DIR blank to not generate thumbnails
+# [relative to OUT_DIR]
+THUMB_OUT_DIR 	= thumbs
+# build thumbnails for these types: supported: mp3, flac, wav, pdf and all image formats that magick can handle
+THUMB_FOR_TYPES = png gif jpg jpeg webp pdf mp4 mp3 flac wav
+# filetype for the thumbnails. (pdfs will always have .jpg)
+THUMB_TYPE 	= jpg
+# size for the thumbnails (not respected by pdf)
+THUMB_SIZE 	= 300
+
 # SITEMAP
-# sitemap relative to OUT_DIR, leave blank to not generate a sitemap [relative to OUT_DIR]
+# leave SITEMAP blank to not generate a sitemap 
+# [relative to OUT_DIR]
 SITEMAP 			= sitemap.xml 
 # base url of the website, without trailing /
 WEBSITE_URL 		= https://quintern.xyz
@@ -151,6 +171,23 @@ ML_OUT_DIRS		= $(foreach lang, $(LANGS), $(patsubst $(_COMMON_DIR)/%, $(ML_OUT_D
 ML_OUT_FLS 		= $(foreach lang, $(LANGS), $(patsubst $(_COMMON_DIR)/%, $(ML_OUT_DIR)/$(lang)/%, $(_ML_SRC_FLS)))
 endif
 
+ifdef FAVICON_DIR
+FAVICON_OUT_DIR = $(addprefix $(OUT_DIR)/,$(FAVICON_DIR))
+else
+FAVICON_OUT_DIR = $(OUT_DIR)
+endif
+
+ifdef FAVICON_SRC
+_FAVICON 		= $(addprefix $(PROJECT_DIR)/,$(FAVICON_SRC))
+FAVICON_ICO		= $(FAVICON_OUT_DIR)/favicon.ico
+APPLE_ICONS 	= $(addsuffix .png,$(addprefix apple-touch-icon-,$(APPLE_ICON_SIZES)))
+WINDOWS_ICONS 	= $(addsuffix .png,$(addprefix mstile-,$(WINDOWS_ICON_SIZES)))
+ANDROID_ICONS 	= $(addsuffix .png,$(addprefix android-chrome-,$(ANDROID_ICON_SIZES)))
+FAVICON_ICONS 	= $(addsuffix .png,$(addprefix favicon-,$(FAVICON_ICON_SIZES)))
+FAVICONS_PNG	= $(addprefix $(FAVICON_OUT_DIR)/,$(APPLE_ICONS) $(WINDOWS_ICONS) $(ANDROID_ICONS) $(FAVICON_ICONS))
+FAVICONS 		= $(FAVICONS_PNG) $(FAVICON_ICO) 
+endif
+
 ifdef THUMB_OUT_DIR
 # files for which to generate thumbnails
 _THUMB_FLS 		= $(filter $(foreach type, $(THUMB_FOR_TYPES), %.$(type)), $(_RES_FLS))
@@ -164,13 +201,12 @@ _DEP_DIRS 		= $(sort $(patsubst $(OUT_DIR)/%, $(DEP_DIR)/%, $(OUT_DIRS) $(ML_OUT
 _DEP_FLS 		= $(shell find $(DEP_DIR) -type f -name '*.d' 2>/dev/null)
 
 ifdef SITEMAP
-	_SITEMAP	= $(addprefix $(OUT_DIR)/, $(SITEMAP))
+	SITEMAP_OUT	= $(addprefix $(OUT_DIR)/, $(SITEMAP))
 	HTML_PP_CMD += --sitemap-temp-file "$(SITEMAP_TEMP_FILE)" --sitemap-base-url $(WEBSITE_URL) --sitemap-webroot-dir "$(OUT_DIR)"
 endif
 ifdef SITEMAP_REMOVE_EXT
 	HTML_PP_CMD += --sitemap-remove-ext
 endif
-
 # SASS, add load-paths
 _SASS_CMD 		= $(SASS_CMD) $(foreach includedir, $(_SASS_INCLUDE_DIRS), --load-path=$(includedir)) --source-map-urls=absolute
 
@@ -180,24 +216,26 @@ FMT_VAR_OUT		="Variable '\e[1;34m%s\e[0m': \e[0;35m%s\e[0m\n"
 FMT_DIR			="\e[1;34mMaking directory\e[0m: \e[0;35m%s\e[0m\n"
 FMT_OUT_HTML	="\e[1;34mBuilding html\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_CSS   	="\e[1;34mBuilding css\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
-FMT_OUT_THUMB	="\e[1;34mBuilding thumbnail\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
+FMT_OUT_THUMB	="\e[1;34mGenerating thumbnail\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
+FMT_OUT_SITEMAP	="\e[1;34mGenerating sitemap\e[0m: \e[1;35m%s\e[0m\n"
+FMT_OUT_FAVICON	="\e[1;34mGenerating favicon\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_OTHER	="\e[1;34mBuilding\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
-FMT_OUT_SITEMAP	="\e[1;34mBuilding sitemap\e[0m: \e[1;35m%s\e[0m\n"
-
 FMT_OUT_ML_HTML="\e[1;34mBuilding html\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_ML_OTHER="\e[1;34mBuilding\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 .SUFFIXES:
 .SUFFIXES: .html .md
 
-.PHONY: default normal multilang resources print start stop clean cleaner
+.PHONY: default normal multilang resources sitemap favicons thumbnails print start stop clean cleaner
 
 .DEFAULT_GOAL 	= all
 
 # include all the dependency makefiles
 include $(_DEP_FLS)
 
-all: normal multilang resources thumbnails
-normal:	$(_SITEMAP) $(OUT_FLS)
+all: normal multilang resources thumbnails sitemap favicons
+normal:	$(OUT_FLS)
+sitemap: $(SITEMAP_OUT)
+favicons: $(FAVICONS) $(FAVICON_ICO)
 multilang: $(ML_OUT_FLS)
 resources: $(RES_OUT_FLS)
 thumbnails: $(THUMB_OUT_FLS)
@@ -225,7 +263,7 @@ endif
 	@# @printf $(FMT_VAR_SRC) "y" 		"$(y)"
 
 # DIRECTORIES
-$(sort $(ML_OUT_DIRS) $(_DEP_DIRS) $(RES_OUT_DIRS) $(OUT_DIRS) $(THUMB_OUT_DIRS)):
+$(sort $(ML_OUT_DIRS) $(_DEP_DIRS) $(RES_OUT_DIRS) $(OUT_DIRS) $(THUMB_OUT_DIRS) $(FAVICON_OUT_DIR)):
 	@printf $(FMT_DIR) "$@"
 	@mkdir -p $@
 
@@ -248,6 +286,20 @@ $(foreach out_dir, $(ML_OUT_LANG_DIRS), $(out_dir)/%): $(_COMMON_DIR)/% | $(ML_O
 	cp $< $@
 endif
 
+ifdef FAVICONS
+# must be first
+$(FAVICON_ICO): $(_FAVICON) | $(FAVICON_OUT_DIR)
+	@printf $(FMT_OUT_FAVICON) "$<" "$@"
+	@convert "$<" -define icon:auto-resize=16,32,48 "$@"
+
+$(FAVICONS_PNG): $(_FAVICON) | $(FAVICON_OUT_DIR)
+	@printf $(FMT_OUT_FAVICON) "$<" "$@"
+	@# resize to 512x512 and pad with transparency in case resize did not resize to correct size
+	@size=$$(echo "$@" | grep -o -P '\d{2,4}x\d{2,4}');\
+	convert "$<" -resize "$${size}" -background none -gravity center -extent "$${size}" "$@"
+endif
+
+
 # THUMBNAILS
 $(OUT_DIR)/$(THUMB_OUT_DIR)/%.jpg: | $(THUMB_OUT_DIRS)
 	@fulltarget="$@"; \
@@ -256,15 +308,15 @@ $(OUT_DIR)/$(THUMB_OUT_DIR)/%.jpg: | $(THUMB_OUT_DIRS)
 	source=$$(printf  "%s\n" $${sources[@]} | grep "$$target"'\.'); \
 	printf $(FMT_OUT_THUMB) "$$source" "$$fulltarget"; \
 	case "$${source##*.}" in \
-	"mp4-") ffmpegthumbnailer -i "$$source" -o "$$fulltarget" -s 300 -q 5;; \
+	"mp4-use-magick-as-well") ffmpegthumbnailer -i "$$source" -o "$$fulltarget" -s 300 -q 5;; \
 	"pdf") pdftoppm -f 1 -singlefile -jpeg -r 50 "$$source" "$${fulltarget%.*}";; \
 	"mp3"|"flac"|"wav") ffmpeg -hide_banner -i "$$source" "$$fulltarget" -y >/dev/null;; \
 	*) magick "$${source}[0]" -thumbnail '$(THUMB_SIZE)x$(THUMB_SIZE)>' "$@";; \
 	esac
 
 # SITEMAP
-ifdef _SITEMAP
-$(_SITEMAP): $(OUT_FLS)  $(ML_OUT_FLS)  # build sitemap after all other files
+ifdef SITEMAP_OUT
+$(SITEMAP_OUT): $(OUT_FLS)  $(ML_OUT_FLS)  # build sitemap after all other files
 	@printf $(FMT_OUT_SITEMAP) "$@"
 	@$(HTML_PP_CMD) --sitemap-generate "$@"
 endif
@@ -312,7 +364,7 @@ stop:
 	killall nginx
 
 clean:
-	-@rm $(OUT_FLS) $(ML_OUT_FLS) $(SITEMAP_TEMP_FILE) $(SITEMAP) 2>/dev/null
+	-@rm $(OUT_FLS) $(ML_OUT_FLS) $(SITEMAP_TEMP_FILE) $(SITEMAP) $(FAVICONS) 2>/dev/null
 	-@rm -r $(DEP_DIR) 2>/dev/null
 
 cleaner:
