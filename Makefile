@@ -113,7 +113,7 @@ SASS_INCLUDE_DIRS	= include/style
 
 # ADVANCED
 # the command to run the html preprocessor
-HTML_PP_CMD 	= python3 html-preprocessor --exit-on light
+HTML_PP_CMD 	= python3 html-preprocessor --exit-on light --debug --trace
 # command to compile sass and scss files with
 # --indented is added for sass and --no-indented for scss
 # --source-maps-urls=absolute is appended for generating dependency files
