@@ -20,7 +20,6 @@ refer to the article [on my website](https://quintern.xyz/en/software/buwuma.htm
 <!--
     #command everything here is an argument
     #anothercommand more arguments
-    While this is a comment right now, it will be UNCOMMENTED in the after the preprocessor finishes!
     #comment This will be a single line html comment after the preprocessor finishes.
 -->
 ```
@@ -124,8 +123,6 @@ Any string
 **Return Value**:
 The argument in comment tags
 
-This can be useful in multi-line comments that contain other commands: In that case, the comment tags will be removed and each command replaced with
-its return value, so if you want to just have commented text in there you can use `#comment` 
 
 ### uncomment
 Uncomment the comment.
@@ -145,7 +142,7 @@ This can be useful when you want to look at the unprocessed html without variabl
 
 ### conditionals
 To turn on or off entire blocks, `if`, `elif` can `else` be used.
-These commands can not be nested and must not appear in multi-line comments.
+These commands can not be nested.
 Logical and `&&` and logical or `||` can be used to chain conditions.
 If a condition is true, the corresponding block is included while all other blocks are deleted.
 
@@ -186,7 +183,7 @@ The generated sidenav
 
 
 #### `section`
-Group all following entries in named section. `section` may not appear in conditional blocks and multiline comments.
+Group all following entries in named section. `section` may not appear in conditional blocks.
 
 **Argument**:
 The name of the section
@@ -278,9 +275,9 @@ Empty string
 
 
 ## Pitfalls
-- The `#include` command must not be in the last line of the file
-- The `#include` command can not be in multi-line comment if the included file also contains comments
-- `#if`, `#elif`, `#else` and `#endif` must not be in multi-line comments
+- The `include` command must not be in the last line of the file
 - The maps in `set` must have **at least 2** options
+- The `section` commands must not be in a conditional block
+- The conditionals must not be neseted
 - If you want to use variables in markdown, you have to escape the `#` with a backslash, so `#$(var)` becomes `\#$(var)`
 - You can not use the `return` command from within the arguments of other commands. Commands are executed in order, so `return` will end up as argument of the first command and thus never be executed
