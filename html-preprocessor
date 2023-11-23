@@ -16,13 +16,13 @@ TODO:
 ************************************************************ SETTINGS ************************************************************
 """
 sidenav_format = """\
-    <div class="sidenav">
-    <ul>
-        <li class="menudrop">&#9776;</li>
-        #sidenav-content
-    </ul>
-    </div>
-    """
+<div class="sidenav">
+<ul>
+    <li class="menudrop">&#9776;</li>
+    #sidenav-content
+</ul>
+</div>
+"""
 sidenav_content_link = "<li class=\"sidenav_link\"><a href=\"#link\">#name</a></li>"
 sidenav_content_section = "<li class=\"sidenav_section\">#name</li>"
 
@@ -271,16 +271,16 @@ class Sidenav:
                 content_i = i
                 break
         if content_i >= 0:
-            sidenav.pop(content_i)
+            indent = sidenav.pop(content_i).replace("#sidenav-content", "")
             added_links = []
             for i in reversed(range(len(Sidenav.entries))):
                 entry = Sidenav.entries[i]
                 if entry[0] == Sidenav.LINK:
                     if entry[2] in added_links: continue  # no duplicates
                     added_links.append(entry[2])
-                    sidenav.insert(content_i, sidenav_content_link.replace("#name", entry[1]).replace("#link", entry[2]))
+                    sidenav.insert(content_i, indent + sidenav_content_link.replace("#name", entry[1]).replace("#link", entry[2]))
                 else:
-                    sidenav.insert(content_i, sidenav_content_section.replace("#name", entry[1]))
+                    sidenav.insert(content_i, indent + sidenav_content_section.replace("#name", entry[1]))
         sidenav_s = ""
         for line in sidenav: sidenav_s += line + "\n"  # cant use "".join because of newlines
         return sidenav_s
@@ -744,7 +744,10 @@ def parse_file(_file:str, variables:dict[str,str], remove_comments):
         p.command_end()
 
     if sidenav_include_pos >= 0:
-        return p.file[:sidenav_include_pos] + Sidenav.generate() + p.file[sidenav_include_pos:]
+        p.i = sidenav_include_pos  # required before get_leading_whitespaces
+        p.find_line_end()  # required before get_leading_whitespaces
+        indent = p.get_leading_whitespaces()
+        return p.file[:sidenav_include_pos] + Sidenav.generate().replace("\n", "\n" + indent) + p.file[sidenav_include_pos:]
     else:
         return p.file
 
