@@ -44,6 +44,14 @@ CSS_FILES 		=
 RESOURCE_DIRS 	= resources 
 RESOURCE_FLS	= 
 
+# FAVICON
+# [relative to PROJECT_DIR]
+FAVICON 		= favicon.png
+APPLE_ICON_SIZES 	= 60x60 120x120
+WINDOWS_ICON_SIZES 	= 144x144
+ANDROID_ICON_SIZES 	= 144x144 512x512
+FAVICON_ICON_SIZES 	= 16x16 32x32 64x64
+
 # THUMBNAILS:
 # if set, thumbnails for all resource files having an extension in THUMB_FOR_TYPES will be generated and placed relative to THUMB_OUT_DIR
 # [relative to OUT_DIR]
@@ -151,6 +159,15 @@ ML_OUT_DIRS		= $(foreach lang, $(LANGS), $(patsubst $(_COMMON_DIR)/%, $(ML_OUT_D
 ML_OUT_FLS 		= $(foreach lang, $(LANGS), $(patsubst $(_COMMON_DIR)/%, $(ML_OUT_DIR)/$(lang)/%, $(_ML_SRC_FLS)))
 endif
 
+ifdef FAVICON
+_FAVICON 		= $(addprefix $(PROJECT_DIR)/,$(FACIVON))
+APPLE_ICONS 	= $(addsuffix .png,$(addprefix apple-touch-icon-,$(APPLE_ICON_SIZES)))
+WINDOWS_ICONS 	= $(addsuffix .png,$(addprefix mstile-,$(WINDOWS_ICON_SIZES)))
+ANDROID_ICONS 	= $(addsuffix .png,$(addprefix android-chrome-,$(ANDROID_ICON_SIZES)))
+FAVICON_ICONS 	= $(addsuffix .png,$(addprefix favicon-,$(FAVICON_ICON_SIZES)))
+FAVICONS 		= $(addprefix $(OUT_DIR)/,$(APPLE_ICONS) $(WINDOWS_ICONS) $(ANDROID_ICONS) $(FAVICON_ICONS))
+endif
+
 ifdef THUMB_OUT_DIR
 # files for which to generate thumbnails
 _THUMB_FLS 		= $(filter $(foreach type, $(THUMB_FOR_TYPES), %.$(type)), $(_RES_FLS))
@@ -189,15 +206,17 @@ FMT_OUT_ML_OTHER="\e[1;34mBuilding\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0m
 .SUFFIXES:
 .SUFFIXES: .html .md
 
-.PHONY: default normal multilang resources print start stop clean cleaner
+.PHONY: default normal multilang resources sitemap favicons thumbnails print start stop clean cleaner
 
 .DEFAULT_GOAL 	= all
 
 # include all the dependency makefiles
 include $(_DEP_FLS)
 
-all: normal multilang resources thumbnails
-normal:	$(_SITEMAP) $(OUT_FLS)
+all: normal multilang resources thumbnails sitemap favicons
+normal:	$(OUT_FLS)
+sitemap: $(_SITEMAP) 
+favicons: $(FAVICONS)
 multilang: $(ML_OUT_FLS)
 resources: $(RES_OUT_FLS)
 thumbnails: $(THUMB_OUT_FLS)
@@ -247,6 +266,13 @@ $(foreach out_dir, $(ML_OUT_LANG_DIRS), $(out_dir)/%): $(_COMMON_DIR)/% | $(ML_O
 	printf $(FMT_OUT_ML_OTHER) "$$lang" "$<" "$@" ; \
 	cp $< $@
 endif
+
+# FAVICON:
+$(FAVICONS): $(_FAVICON) | $(OUT_DIR) 
+	for size in $(APPLE_ICON_SIZES); do \
+		convert "$<" -size "$$size" "$(FAVICON_DIR)/apple-touch-icon-$$size.png";\
+	done
+
 
 # THUMBNAILS
 $(OUT_DIR)/$(THUMB_OUT_DIR)/%.jpg: | $(THUMB_OUT_DIRS)
