@@ -545,6 +545,17 @@ class HTMLParser(Parser):
             Sidenav.addEntry(match.groups()[1], f"#{match.groups()[0]}")
             ptrace("HTMLParser.add_sidenav_headings:", f"Found heading with id:", match.groups())
 
+    def get_leading_whitespaces(self):
+        """returns the whitespaces at the start of the line"""
+        # find last newline
+        line_beg = self.file.rfind("\n", 0, self.i)
+        if line_beg < 0: line_beg = 0
+        else: line_beg += 1  # start after newline
+        match = re.match(r"^([ \t]*)", self.file[line_beg:self.pos['line_end']])
+        if not match: return ""
+        else: return match.groups()[0]
+
+
     # Parsing functions
     def find_line_end(self):
         """
@@ -605,7 +616,8 @@ class HTMLParser(Parser):
         """
         # not a multiline comment
         if self.pos["line_end"] > self.pos["cmt_end"]: return
-        self.replace(self.pos["cmt_beg"], self.pos["cmt_end"], self.file[self.pos["cmt_beg"]:self.pos["cmt_end"]].replace("\n", "-->\n<!--"), ignore_bounds=["line_end"])
+        indent = self.get_leading_whitespaces()
+        self.replace(self.pos["cmt_beg"], self.pos["cmt_end"], self.file[self.pos["cmt_beg"]:self.pos["cmt_end"]].replace("\n", "-->\n" + indent + "<!--"), ignore_bounds=["line_end"])
         self.find_line_end()
         self.find_comment_end()
 
@@ -624,7 +636,9 @@ class HTMLParser(Parser):
         return match
 
     def replace_command_with_output(self, command_output):
-        self.replace(self.i, self.pos["cmd_end"], command_output)
+        # keep indent level
+        indent = self.get_leading_whitespaces()
+        self.replace(self.i, self.pos["cmd_end"], command_output.replace("\n", "\n" + indent))
         ptrace(f"HTMLParser.replace_command_with_output", f"After command, the line is now '{self.file[self.i:self.pos['line_end']]}'")
 
     def command_end(self):
@@ -835,7 +849,7 @@ if __name__ == "__main__":
 
         output_html = parse_file(target_html, variables, not args.preserve_comments)
         # remove empty lines
-        output_html = re.sub(r"[\t\r ]*\n(?:[\t\r ]*\n[\t\r ]*)+", r"\n", output_html)
+        output_html = re.sub(r"[\t\r ]*\n(?:[\t\r ]*\n)+", r"\n", output_html)
 
         # pdebug(f"Output: {output_html}")
 
