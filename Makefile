@@ -259,7 +259,7 @@ $(OUT_DIR)/$(THUMB_OUT_DIR)/%.jpg: | $(THUMB_OUT_DIRS)
 	"mp4-") ffmpegthumbnailer -i "$$source" -o "$$fulltarget" -s 300 -q 5;; \
 	"pdf") pdftoppm -f 1 -singlefile -jpeg -r 50 "$$source" "$${fulltarget%.*}";; \
 	"mp3"|"flac"|"wav") ffmpeg -hide_banner -i "$$source" "$$fulltarget" -y >/dev/null;; \
-	"*") magick "$$source[0]" -thumbnail '$(THUMB_SIZE)x$(THUMB_SIZE)>' "$@";; \
+	*) magick "$${source}[0]" -thumbnail '$(THUMB_SIZE)x$(THUMB_SIZE)>' "$@";; \
 	esac
 
 # SITEMAP
