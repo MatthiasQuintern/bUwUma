@@ -332,16 +332,19 @@ $(OUT_DIR)/%.html: $(PROJECT_DIR)/%.html | $(OUT_DIRS) $(_DEP_DIRS)
 	@#awk -i inplace '{FS="" sub(/<!--.*-->/,"")}1' $@
 	@#awk -i inplace '{if (NF != 0) print}' $@
 
+
+# SASS
 $(OUT_DIR)/%.css: $(PROJECT_DIR)/%.sass | $(OUT_DIRS) $(_DEP_DIRS)
 	@printf $(FMT_OUT_CSS) "$<" "$@";
-	@$(_SASS_CMD) --indented $< $@
-	@# generate a dependecy file from the source map and delete the map
+	@$(_SASS_CMD) --indented "$<" "$@" || { rm "$@"; exit 1; }
 	@depfile=$(patsubst $(OUT_DIR)/%,$(DEP_DIR)/%,$@).d; echo -n  "$@: " > "$$depfile"; \
 		jq -r '.sources | @sh' $@.map | tr -d \' | sed 's|file://||g' >> "$$depfile"; \
 		rm $@.map
+	@# generate a dependecy file from the source map and delete the map
+# SCSS
 $(OUT_DIR)/%.css: $(PROJECT_DIR)/%.scss | $(OUT_DIRS) $(_DEP_DIRS)
 	@printf $(FMT_OUT_CSS) "$<" "$@";
-	@$(_SASS_CMD) --no-indented $< $@
+	@$(_SASS_CMD) --no-indented "$<" "$@" || { rm "$@"; exit 1; }
 	@# generate a dependecy file from the source map and delete the map
 	@depfile=$(patsubst $(OUT_DIR)/%,$(DEP_DIR)/%,$@).d; echo -n  "$@: " > "$$depfile"; \
 		jq -r '.sources | @sh' $@.map | tr -d \' | sed 's|file://||g' >> "$$depfile"; \
