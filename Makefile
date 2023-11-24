@@ -77,7 +77,7 @@ WINDOWS_ICON_SIZES 	= 150x150
 # all android-chrome-XXxXX.png sizes
 ANDROID_ICON_SIZES 	= 192x192 512x512
 # all favicon-XXxXX.png sizes
-FAVICON_ICON_SIZES 	= 16x16 32x32 64x64
+FAVICON_ICON_SIZES 	= 16x16 32x32 48x48
 
 # THUMBNAILS:
 # thumbnails for all resource files having an extension in THUMB_FOR_TYPES will be generated and placed relative to THUMB_OUT_DIR
