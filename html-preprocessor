@@ -24,7 +24,13 @@ sidenav_format = """\
 </div>
 """
 sidenav_content_link = "<li class=\"sidenav_link\"><a href=\"#link\">#name</a></li>"
-sidenav_content_section = "<li class=\"sidenav_section\">#name</li>"
+sidenav_content_section = """\
+<li class="sidenav_section_name">#name</li>
+<li class="sidenav_section_links">
+    <ul>
+        #links
+    </ul>
+</li>"""
 
 exit_on_include_failure = False
 
@@ -236,11 +242,40 @@ class Sitemap:
 """
 ************************************************************ SIDENAV ************************************************************
 """
+def replace_and_respect_indent(string, replace, replacement):
+    """
+    replace all occurences of 'replace' with 'replacement', add the whitespaces in front of 'replace' to every line of 'replacement'
+    """
+    i = string.find(replace)
+    while i >= 0:
+        line_begin = string.rfind("\n", 0, i) + 1
+        indent = string[line_begin:i]
+        string = string[:line_begin] + replacement.replace("\n", "\n" + indent) + string[i+len(replace):]
+        i = string.find(replace)
+    return string
+
 class Sidenav:
-    LINK = 0
-    SECTION = 1
-    # 0: link, 1: section
-    entries: list[tuple[int, str, str]] = []
+    class Link:
+        def __init__(self, name: str, link: str):
+            self.link = link
+            self.name = name
+        def __repr__(self):
+            return f"Link: name={self.name}, link={self.link}"
+
+        def get(self):
+            return sidenav_content_link.replace("#name", self.name).replace("#link", self.link)
+    class Section:
+        def __init__(self, name: str):
+            self.name = name
+            self.links = []
+        def add_link(self, link):
+            self.links.append(link)
+        def __repr__(self):
+            return f"Section: name={self.name}"
+        def get(self):
+            links = "".join([ link.get() + "\n" for link in self.links ])
+            return replace_and_respect_indent(sidenav_content_section.replace("#name", self.name), "#links", links)
+    entries: list[Link|Section] = []
     skip_next = False
     custom_name = None
     @staticmethod
@@ -251,10 +286,13 @@ class Sidenav:
         if Sidenav.custom_name:
             name = Sidenav.custom_name
             Sidenav.custom_name = None
-        Sidenav.entries.append((Sidenav.LINK, name, link))
+        if len(Sidenav.entries) > 0 and type(Sidenav.entries[-1]) == Sidenav.Section:
+            Sidenav.entries[-1].add_link(Sidenav.Link(name, link))
+        else:
+            Sidenav.entries.append(Sidenav.Link(name, link))
     @staticmethod
     def addSection(name):
-        Sidenav.entries.append((Sidenav.SECTION, name, ""))
+        Sidenav.entries.append(Sidenav.Section(name))
     @staticmethod
     def setCustomName(name: str):
         Sidenav.custom_name = name
@@ -264,26 +302,8 @@ class Sidenav:
     @staticmethod
     def generate() -> str:
         pdebug("Sidenav.generate", f"found the following entries: {Sidenav.entries}")
-        sidenav:list[str] = sidenav_format.split('\n')
-        content_i = -1
-        for i in range(len(sidenav)):  # find in which line the entries need to be placed
-            if "#sidenav-content" in sidenav[i]:
-                content_i = i
-                break
-        if content_i >= 0:
-            indent = sidenav.pop(content_i).replace("#sidenav-content", "")
-            added_links = []
-            for i in reversed(range(len(Sidenav.entries))):
-                entry = Sidenav.entries[i]
-                if entry[0] == Sidenav.LINK:
-                    if entry[2] in added_links: continue  # no duplicates
-                    added_links.append(entry[2])
-                    sidenav.insert(content_i, indent + sidenav_content_link.replace("#name", entry[1]).replace("#link", entry[2]))
-                else:
-                    sidenav.insert(content_i, indent + sidenav_content_section.replace("#name", entry[1]))
-        sidenav_s = ""
-        for line in sidenav: sidenav_s += line + "\n"  # cant use "".join because of newlines
-        return sidenav_s
+        entries = "".join([entry.get() + "\n" for entry in Sidenav.entries])
+        return replace_and_respect_indent(sidenav_format, "#sidenav-content", entries)
     @staticmethod
     def cmd_sidenav(args:str, variables:dict[str,str]) -> str:
         space = args.find(" ")
