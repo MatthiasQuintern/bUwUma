@@ -1,6 +1,4 @@
-# ABOUT
-# - In this Makefile, 'building a file' means:
-# 	- if the file has a '.html' extension: run the html preprocessor on the file and place the output in the output directory
+# ABOUT In this Makefile, 'building a file' means: - if the file has a '.html' extension: run the html preprocessor on the file and place the output in the output directory
 # 	- elif the file has a '.sass' or '.scss' extension: run the sass compiler on the file and place the output in the output directory
 # 	- else: copy the file to the output directory
 # - Folder structure from source directories will be preserved in the output directory
@@ -63,12 +61,12 @@ LANGS 			= de en
 
 # FAVICON
 # image from which the favicons will be generated
-# leave FAVICON_SRC blank to not generate favicons
+# leave FAVICON blank to not generate favicons
 # [relative to PROJECT_DIR]
-FAVICON_SRC		= resources/favicon.png
+FAVICON				= resources/favicon.png
 # directory where all genreated favicons will be placed
 # [relative to OUT_DIR]
-FAVICON_DIR		= favicon
+FAVICON_OUT_DIR		= favicon
 # in addition to the ones below, a favicon.ico containing the 16x16, 32x32 and 48x48will be generated
 # all apple-touch-icon-XXxXX.png sizes
 APPLE_ICON_SIZES 	= 180x180
@@ -79,24 +77,46 @@ ANDROID_ICON_SIZES 	= 192x192 512x512
 # all favicon-XXxXX.png sizes
 FAVICON_ICON_SIZES 	= 16x16 32x32 48x48
 
-# THUMBNAILS:
-# thumbnails for all resource files having an extension in THUMB_FOR_TYPES will be generated and placed relative to THUMB_OUT_DIR
-# leave THUMB_OUT_DIR blank to not generate thumbnails
-# [relative to OUT_DIR]
-THUMB_OUT_DIR 	=
+# THUMBNAILS and OPTIMIZED IMAGES:
+# In the source paths _FLS and _DIRS, the redundant '/./' will be replaced by /_OUT_DIR/
+# This way leaves more control over where the thumbanils/optimized images will be placed.
+
+# THUMBNAILS
+# Thumbnails for THUMB_FLS and all files in THUMB_DIRS (recursively) having an extension in THUMB_FOR_TYPES 
+# will be generated.
+# example:
+# 	THUMB_DIRS 		= resources/./video ././resources/music
+# 	THUMB_OUT_DIR 	= thumbnails
+# 	resources/video/cool-video.mp4 	-> resources/thumbnails/video/cool-video.webp
+# 	resources/music/song.mp3 		-> thumbnails/resources/music/song.webp
+THUMB_FLS  		=
+THUMB_DIRS  	= resources/./
+# Substitution for /./ in THUMB_FLS and THUMB_DIRS
+THUMB_OUT_DIR 	= thumbnails
 # build thumbnails for these types: supported: mp3, flac, wav, pdf and all image formats that magick can handle
-THUMB_FOR_TYPES = png gif jpg jpeg webp pdf mp4 mp3 flac wav
-# filetype for the thumbnails. (pdfs will always have .jpg)
-THUMB_TYPE 	= jpg
-# size for the thumbnails (not respected by pdf)
-THUMB_SIZE 	= 300
+THUMB_FOR_TYPES 	= pdf mp4 mp3 flac wav
+# filetype for the thumbnails
+THUMB_TYPE 	= webp
+# size for the thumbnails, the larger dimension will have this size
+THUMB_SIZE 	= 400
+
+# OPTIMIZED IMAGES
+# A optimized image version will be generated for all images in OPTIMIZED_IMG_FLS and in OPTIMIZED_IMG_DIRS (recursively) 
+# having an extension in OPTIMIZED_IMG_FOR_TYPES 
+OPTIMIZED_IMG_FLS 		= 
+OPTIMIZED_IMG_DIRS 		= resources/./
+# Substitution for /./ in OPTIMIZED_IMG_FLS and OPTIMIZED_IMG_DIRS
+OPTIMIZED_IMG_OUT_DIR	= optim
+OPTIMIZED_IMG_FOR_TYPES = png gif jpg jpeg
+OPTIMIZED_IMG_TYPE 		= webp
+OPTIMIZED_IMG_QUALITY	= 80
 
 # SITEMAP
 # leave SITEMAP blank to not generate a sitemap 
 # [relative to OUT_DIR]
 SITEMAP 			= sitemap.xml 
 # base url of the website, without trailing /
-WEBSITE_URL 		= https://example.com
+WEBSITE_URL 		= https://quintern.xyz
 # file required during build process for sitemap generation [absolute or relative to current working directory]
 SITEMAP_TEMP_FILE 	= .sitemap.pkl
 # comment to keep the file extension on sitemap entries
@@ -119,8 +139,13 @@ HTML_PP_CMD 	= python3 html-preprocessor --exit-on light
 # --source-maps-urls=absolute is appended for generating dependency files
 SASS_CMD 		= sass --color
 
+OPTIMIZED_IMG_CMD 	= convert -quality $(OPTIMIZED_IMG_QUALITY)
+
 # [absolute or relative to current working directory]
 DEP_DIR 		= .dependencies
+
+# required for thumbnail creation
+TMP_DIR			= /tmp
 
 
 #
@@ -137,6 +162,10 @@ _CSS_DIRS 		= $(addprefix $(PROJECT_DIR)/, $(CSS_DIRS))
 _SASS_INCLUDE_DIRS = $(addprefix $(PROJECT_DIR)/, $(SASS_INCLUDE_DIRS))
 _RES_DIRS 		= $(addprefix $(PROJECT_DIR)/, $(RESOURCE_DIRS))
 _RES_FLS 		= $(addprefix $(PROJECT_DIR)/, $(RESOURCE_FLS))
+_OPTIMIZED_IMG_DIRS = $(addprefix $(PROJECT_DIR)/, $(OPTIMIZED_IMG_DIRS))
+_OPTIMIZED_IMG_FLS = $(addprefix $(PROJECT_DIR)/, $(OPTIMIZED_IMG_FLS))
+_THUMB_DIRS		= $(addprefix $(PROJECT_DIR)/, $(THUMB_DIRS))
+_THUMB_FLS 		= $(addprefix $(PROJECT_DIR)/, $(THUMB_FLS))
 _COMMON_DIR 	= $(addprefix $(PROJECT_DIR)/, $(COMMON_DIR))
 _INCLUDE_DIR 	= $(addprefix $(PROJECT_DIR)/, $(INCLUDE_DIR))
 
@@ -171,29 +200,33 @@ ML_OUT_DIRS		= $(foreach lang, $(LANGS), $(patsubst $(_COMMON_DIR)/%, $(ML_OUT_D
 ML_OUT_FLS 		= $(foreach lang, $(LANGS), $(patsubst $(_COMMON_DIR)/%, $(ML_OUT_DIR)/$(lang)/%, $(_ML_SRC_FLS)))
 endif
 
-ifdef FAVICON_DIR
-FAVICON_OUT_DIR = $(addprefix $(OUT_DIR)/,$(FAVICON_DIR))
+ifdef FAVICON_OUT_DIR
+__FAVICON_OUT_DIR = $(addprefix $(OUT_DIR)/,$(FAVICON_OUT_DIR))
 else
-FAVICON_OUT_DIR = $(OUT_DIR)
+__FAVICON_OUT_DIR = $(OUT_DIR)
 endif
 
-ifdef FAVICON_SRC
-_FAVICON 		= $(addprefix $(PROJECT_DIR)/,$(FAVICON_SRC))
-FAVICON_ICO		= $(FAVICON_OUT_DIR)/favicon.ico
+ifdef FAVICON
+_FAVICON 		= $(addprefix $(PROJECT_DIR)/,$(FAVICON))
+FAVICON_ICO		= $(__FAVICON_OUT_DIR)/favicon.ico
 APPLE_ICONS 	= $(addsuffix .png,$(addprefix apple-touch-icon-,$(APPLE_ICON_SIZES)))
 WINDOWS_ICONS 	= $(addsuffix .png,$(addprefix mstile-,$(WINDOWS_ICON_SIZES)))
 ANDROID_ICONS 	= $(addsuffix .png,$(addprefix android-chrome-,$(ANDROID_ICON_SIZES)))
 FAVICON_ICONS 	= $(addsuffix .png,$(addprefix favicon-,$(FAVICON_ICON_SIZES)))
-FAVICONS_PNG	= $(addprefix $(FAVICON_OUT_DIR)/,$(APPLE_ICONS) $(WINDOWS_ICONS) $(ANDROID_ICONS) $(FAVICON_ICONS))
+FAVICONS_PNG	= $(addprefix $(__FAVICON_OUT_DIR)/,$(APPLE_ICONS) $(WINDOWS_ICONS) $(ANDROID_ICONS) $(FAVICON_ICONS))
 FAVICONS 		= $(FAVICONS_PNG) $(FAVICON_ICO) 
 endif
 
-ifdef THUMB_OUT_DIR
+_THUMB_FLS			+= $(foreach srcdir, $(_THUMB_DIRS), $(shell find $(subst //,/,$(srcdir)/) -type f 2>/dev/null))
 # files for which to generate thumbnails
-_THUMB_FLS 		= $(filter $(foreach type, $(THUMB_FOR_TYPES), %.$(type)), $(_RES_FLS))
-THUMB_OUT_FLS 	= $(addsuffix .jpg, $(basename $(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/$(THUMB_OUT_DIR)/%, $(_THUMB_FLS))))
-THUMB_OUT_DIRS	= $(sort $(dir $(THUMB_OUT_FLS)))  # sort for removing duplicates
-endif
+_THUMB_FLS_FILTERED	= $(filter $(foreach type, $(THUMB_FOR_TYPES), %.$(type)), $(_THUMB_FLS))
+THUMB_OUT_FLS 		= $(addsuffix .$(THUMB_TYPE), $(basename $(subst /./,/$(THUMB_OUT_DIR)/,$(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/%, $(_THUMB_FLS_FILTERED)))))
+THUMB_OUT_DIRS		= $(sort $(dir $(THUMB_OUT_FLS)))  # sort for removing duplicates
+
+_OPTIMIZED_IMG_FLS			+= $(foreach srcdir, $(_OPTIMIZED_IMG_DIRS), $(shell find $(subst //,/,$(srcdir)) -type f 2>/dev/null))
+_OPTIMIZED_IMG_FLS_FILTERED += $(filter $(foreach type, $(OPTIMIZED_IMG_FOR_TYPES), %.$(type)), $(_OPTIMIZED_IMG_FLS))
+OPTIMIZED_IMG_OUT_FLS 		= $(addsuffix .$(OPTIMIZED_IMG_TYPE), $(basename $(subst /./,/$(OPTIMIZED_IMG_OUT_DIR)/,$(patsubst $(PROJECT_DIR)/%, $(OUT_DIR)/%, $(_OPTIMIZED_IMG_FLS_FILTERED)))))
+OPTIMIZED_IMG_OUT_DIRS		= $(sort $(dir $(OPTIMIZED_IMG_OUT_FLS)))  # sort for removing duplicates
 
 # needed for creating them
 _DEP_DIRS 		= $(sort $(patsubst $(OUT_DIR)/%, $(DEP_DIR)/%, $(OUT_DIRS) $(ML_OUT_DIRS)))
@@ -217,6 +250,7 @@ FMT_DIR			="\e[1;34mMaking directory\e[0m: \e[0;35m%s\e[0m\n"
 FMT_OUT_HTML	="\e[1;34mBuilding html\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_CSS   	="\e[1;34mBuilding css\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_THUMB	="\e[1;34mGenerating thumbnail\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
+FMT_OUT_OPTIMIZED_IMG	="\e[1;34mGenerating optimized image\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_SITEMAP	="\e[1;34mGenerating sitemap\e[0m: \e[1;35m%s\e[0m\n"
 FMT_OUT_FAVICON	="\e[1;34mGenerating favicon\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
 FMT_OUT_OTHER	="\e[1;34mBuilding\e[0m: \e[1;33m%s\e[0m at \e[1;35m%s\e[0m\n"
@@ -225,20 +259,21 @@ FMT_OUT_ML_OTHER ="\e[1;34mBuilding\e[0m in lang \e[1;34m%s\e[0m: \e[1;33m%s\e[0
 # .SUFFIXES:
 # .SUFFIXES: .html .md
 
-.PHONY: default normal multilang resources sitemap favicons thumbnails print start stop clean cleaner
+.PHONY: default normal multilang resources sitemap favicons thumbnails images print start stop clean cleaner
 
 .DEFAULT_GOAL 	= all
 
 # include all the dependency makefiles
 include $(_DEP_FLS)
 
-all: normal multilang resources thumbnails sitemap favicons
+all: normal multilang resources thumbnails sitemap favicons images
 normal:	$(OUT_FLS)
 sitemap: $(SITEMAP_OUT)
 favicons: $(FAVICONS) $(FAVICON_ICO)
 multilang: $(ML_OUT_FLS)
 resources: $(RES_OUT_FLS)
 thumbnails: $(THUMB_OUT_FLS)
+images: $(OPTIMIZED_IMG_OUT_FLS)
 
 print:
 	@printf $(FMT_VAR_SRC) "PROJECT_DIR" 	"$(PROJECT_DIR)"
@@ -256,14 +291,20 @@ endif
 	@printf $(FMT_VAR_SRC) "_DEP_FLS" 		"$(_DEP_FLS)"
 ifdef THUMB_OUT_DIR
 	@printf $(FMT_VAR_SRC) "THUMB_OUT_DIR" 	"$(THUMB_OUT_DIR)"
-	@printf $(FMT_VAR_OUT) "_THUMB_FLS" 	"$(_THUMB_FLS)"
+	@printf $(FMT_VAR_OUT) "_THUMB_FLS_FILTERED" 	"$(_THUMB_FLS_FILTERED)"
 	@printf $(FMT_VAR_OUT) "THUMB_OUT_FLS"  "$(THUMB_OUT_FLS)"
 	@printf $(FMT_VAR_OUT) "THUMB_OUT_DIRS" "$(THUMB_OUT_DIRS)"
+endif
+ifdef OPTIMIZED_IMG_OUT_DIR
+	@printf $(FMT_VAR_SRC) "OPTIMIZED_IMG_OUT_DIR" 	"$(OPTIMIZED_IMG_OUT_DIR)"
+	@printf $(FMT_VAR_OUT) "_OPTIMIZED_IMG_FLS_FILTERED" 	"$(_OPTIMIZED_IMG_FLS_FILTERED)"
+	@printf $(FMT_VAR_OUT) "OPTIMIZED_IMG_OUT_FLS"  "$(OPTIMIZED_IMG_OUT_FLS)"
+	@printf $(FMT_VAR_OUT) "OPTIMIZED_IMG_OUT_DIRS" "$(OPTIMIZED_IMG_OUT_DIRS)"
 endif
 	@# @printf $(FMT_VAR_SRC) "y" 		"$(y)"
 
 # DIRECTORIES
-$(sort $(ML_OUT_DIRS) $(_DEP_DIRS) $(RES_OUT_DIRS) $(OUT_DIRS) $(THUMB_OUT_DIRS) $(FAVICON_OUT_DIR)):
+$(sort $(ML_OUT_DIRS) $(_DEP_DIRS) $(RES_OUT_DIRS) $(OUT_DIRS) $(THUMB_OUT_DIRS) $(OPTIMIZED_IMG_OUT_DIRS) $(__FAVICON_OUT_DIR)):
 	@printf $(FMT_DIR) "$@"
 	@mkdir -p $@
 
@@ -288,11 +329,11 @@ endif
 
 ifdef FAVICONS
 # must be first
-$(FAVICON_ICO): $(_FAVICON) | $(FAVICON_OUT_DIR)
+$(FAVICON_ICO): $(_FAVICON) | $(__FAVICON_OUT_DIR)
 	@printf $(FMT_OUT_FAVICON) "$<" "$@"
 	@convert "$<" -define icon:auto-resize=16,32,48 "$@"
 
-$(FAVICONS_PNG): $(_FAVICON) | $(FAVICON_OUT_DIR)
+$(FAVICONS_PNG): $(_FAVICON) | $(__FAVICON_OUT_DIR)
 	@printf $(FMT_OUT_FAVICON) "$<" "$@"
 	@# resize to 512x512 and pad with transparency in case resize did not resize to correct size
 	@size=$$(echo "$@" | grep -o -P '\d{2,4}x\d{2,4}');\
@@ -301,18 +342,31 @@ endif
 
 
 # THUMBNAILS
-$(OUT_DIR)/$(THUMB_OUT_DIR)/%.jpg: | $(THUMB_OUT_DIRS)
-	@fulltarget="$@"; \
-	target="$(patsubst $(OUT_DIR)/$(THUMB_OUT_DIR)/%.jpg,%,$@)"; \
-	sources=($(_THUMB_FLS)); \
-	source=$$(printf  "%s\n" $${sources[@]} | grep "$$target"'\.'); \
-	printf $(FMT_OUT_THUMB) "$$source" "$$fulltarget"; \
+$(THUMB_OUT_FLS): | $(THUMB_OUT_DIRS) $(TMP_DIR)
+	@sources=($(foreach f,$(_THUMB_FLS_FILTERED), "$(f)")); \
+	targets=($(foreach f,$(THUMB_OUT_FLS), "$(f)")); \
+	index=$$(printf "%s\n" "$${targets[@]}" | awk '$$0 == "$@" {print NR-1}'); \
+	source="$${sources[$$index]}"; \
+	printf $(FMT_OUT_THUMB) "$$source" "$@"; \
 	case "$${source##*.}" in \
-	"mp4-use-magick-as-well") ffmpegthumbnailer -i "$$source" -o "$$fulltarget" -s 300 -q 5;; \
-	"pdf") pdftoppm -f 1 -singlefile -jpeg -r 50 "$$source" "$${fulltarget%.*}";; \
-	"mp3"|"flac"|"wav") ffmpeg -hide_banner -i "$$source" "$$fulltarget" -y >/dev/null;; \
+	"mp4-use-magick-as-well") ffmpegthumbnailer -i "$$source" -o "$@" -s 300 -q 5;; \
+	"pdf") \
+		pdftoppm -f 1 -singlefile -jpeg -r 50 "$$source" "$(TMP_DIR)/buwuma-pdf"; \
+		magick "$(TMP_DIR)/buwuma-pdf.jpg" -thumbnail '$(THUMB_SIZE)x$(THUMB_SIZE)>' "$@"; \
+		rm "$(TMP_DIR)/buwuma-pdf.jpg"; \
+		;; \
+	"mp3"|"flac"|"wav") ffmpeg -hide_banner -i "$$source" "$@" -y >/dev/null;; \
 	*) magick "$${source}[0]" -thumbnail '$(THUMB_SIZE)x$(THUMB_SIZE)>' "$@";; \
 	esac
+
+# OPTIMIZED IMAGES
+$(OPTIMIZED_IMG_OUT_FLS): | $(OPTIMIZED_IMG_OUT_DIRS)
+	@sources=($(foreach f,$(_OPTIMIZED_IMG_FLS_FILTERED), "$(f)")); \
+	targets=($(foreach f,$(OPTIMIZED_IMG_OUT_FLS), "$(f)")); \
+	index=$$(printf "%s\n" "$${targets[@]}" | awk '$$0 == "$@" {print NR-1}'); \
+	source="$${sources[$$index]}"; \
+	printf $(FMT_OUT_OPTIMIZED_IMG) "$$source" "$@"; \
+	$(OPTIMIZED_IMG_CMD) "$${source}[0]" "$@"
 
 # SITEMAP
 ifdef SITEMAP_OUT
@@ -341,6 +395,7 @@ $(OUT_DIR)/%.css: $(PROJECT_DIR)/%.sass | $(OUT_DIRS) $(_DEP_DIRS)
 		jq -r '.sources | @sh' $@.map | tr -d \' | sed 's|file://||g' >> "$$depfile"; \
 		rm $@.map
 	@# generate a dependecy file from the source map and delete the map
+
 # SCSS
 $(OUT_DIR)/%.css: $(PROJECT_DIR)/%.scss | $(OUT_DIRS) $(_DEP_DIRS)
 	@printf $(FMT_OUT_CSS) "$<" "$@";
@@ -354,7 +409,6 @@ $(OUT_DIR)/%.css: $(PROJECT_DIR)/%.scss | $(OUT_DIRS) $(_DEP_DIRS)
 $(OUT_DIR)/%: $(PROJECT_DIR)/% | $(OUT_DIRS) $(RES_OUT_DIRS)
 	@printf $(FMT_OUT_OTHER) "$<" "$@"
 	@cp -r $< $@
-
 
 
 # .DEFAULT:
