@@ -1,0 +1,1 @@
+build/style/main.css: /home/matth/Projekte/web/bUwUma/example/src/style/main.sass /home/matth/Projekte/web/bUwUma/example/src/include/style/images.sass /home/matth/Projekte/web/bUwUma/example/src/include/style/sidenav.sass

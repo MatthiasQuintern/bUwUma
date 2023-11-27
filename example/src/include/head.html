@@ -1,0 +1,32 @@
+<head>
+<!--
+If not overridden, these values will be used, depending on the lang variable
+#default description lang?{*:Default description,de:Voreingestellte Beschreibung}
+#default keywords lang?{*:english,keywords,example;de:deutsche,keywords,beispiel}
+#default title lang?{*:bUwUma works!;de:bUwUma funktioniert!}
+#default stylesheet /style/main.css
+-->
+    <meta http-equiv="content-type" content="text/html">
+    <meta charset="utf-8">
+    <meta name="description" content="#$(description)">
+    <meta name="keywords" content="#$(keywords)">
+    <meta name="author" content="Max Mustermann">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>#$(title)</title>
+    <link rel="icon" type="image/x-icon" href="/favicon/favicon.ico">
+    <link rel="shortcut-icon" href="/favicon/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" type="image/png" href="/favicon/apple-touch-icon-180x180.png">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <link rel="stylesheet" href="#$(stylesheet)", id="mainStyleSheet">
+    <!-- #uncomment #$(extra_head) -->
+</head>
+<script src="/script/test.js"></script>
+<!--
+This image can now be included by simply using the variable example_img
+#set img_title bUwUma
+#set img_alt lang?{*:Example image;de:Beispielbild}
+#set example_img <img class="example" src="/resources/example.svg" alt="#$(img_alt)" title="#$(img_title)"/>
+-->

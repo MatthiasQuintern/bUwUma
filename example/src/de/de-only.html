@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<!--
+The lang variable must be set manually (for the included head), since this site is not in COMMON_DIR
+#set lang de
+-->
+<html lang="#$(lang)">
+<!-- 
+#set title Coole Seite
+#set description Diese Seite ist nur auf deutsch
+#include #$(include_dir)/head.html
+-->
+    
+<body>
+    <main>
+        <h1>Hallo</h1>
+        <div class="img_text">
+            #$(example_img)
+            <p>
+                Diese Seite ist nur auf deutsch verfügbar
+                Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam.
+            </p>
+        </div>
+    </main>
+</body>
+</html>
+

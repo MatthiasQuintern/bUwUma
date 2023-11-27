@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="#$(lang)">
+<!-- 
+Since it is in the COMMON_DIR, this file will be built twice:  /en/index.html and /de/index.html
+The lang variable is automatically set for this file
+#set title Index
+#set keywords lang?{*:Index,Example;de:Index,Beispiel}
+The include_dir variable is set in the bUwUma Makefile and is automatically set, 
+#include #$(include_dir)/head.html
+-->
+    
+<body>
+<!--
+#sidenav include
+#set sidenav_section_name lang?{*:Sidenav Section;de:Abschnitte}
+#sidenav section #$(sidenav_section_name)
+-->
+
+<main>
+    <!-- #include #$(include_dir)/index.#$(lang).md -->
+</main>
+<!--
+#set sidenav_section_other lang?{*:Other;de:Sonstiges}
+#sidenav section #$(sidenav_section_other):
+#if #$(lang) == de
+    #sidenav custom href="/en/index.html" name="Index Englisch"
+#else
+    #sidenav custom href="/de/index.html" name="Index Deutsch"
+#endif
+#set sidenav_link lang?{*:Englisch only page;de:Nur englische Seite}
+#sidenav custom href="/en/en-only.html" name="#$(sidenav_link)"
+#set sidenav_link lang?{*:German only page;de:Nur deutsche Seite}
+#sidenav custom href="/de/de-only.html" name="#$(sidenav_link)"
+-->
+</body>
+</html>
+

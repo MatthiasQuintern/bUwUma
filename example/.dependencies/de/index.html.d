@@ -1,0 +1,1 @@
+build/de/index.html: src/include/head.html src/include/index.de.md src/common/index.html

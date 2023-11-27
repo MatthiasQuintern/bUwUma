@@ -1,0 +1,42 @@
+body {
+  background-color: #eee;
+}
+
+h1 {
+  color: blue;
+}
+
+p {
+  border: solid 1px #cc0;
+}
+
+.img_text img {
+  width: 30%;
+  height: auto;
+  float: left;
+}
+.img_text p {
+  width: 69%;
+  float: left;
+}
+
+.sidenav {
+  border: solid 2px blue;
+}
+.sidenav ul {
+  width: fit-content;
+}
+.sidenav li {
+  display: none;
+}
+.sidenav:hover li {
+  display: block;
+}
+.sidenav .menudrop {
+  display: block;
+}
+.sidenav:hover .menudrop, .sidenav li {
+  display: none;
+}
+
+/*# sourceMappingURL=main.css.map */

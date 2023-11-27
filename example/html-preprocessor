@@ -1,0 +1,904 @@
+#!/bin/python3
+import os
+from os import path
+import re
+from sys import argv
+from collections.abc import Callable
+import argparse
+import pickle
+
+"""
+TODO:
+- more testing
+- reintroduce the nav_selected class on nav feature
+"""
+"""
+************************************************************ SETTINGS ************************************************************
+"""
+sidenav_format = """\
+<div class="sidenav">
+<ul>
+    <li class="menudrop">&#9776;</li>
+    #sidenav-content
+</ul>
+</div>
+"""
+sidenav_content_link = "<li class=\"sidenav_link\"><a href=\"#link\">#name</a></li>"
+sidenav_content_section = """\
+<li class="sidenav_section_name">#name</li>
+<li class="sidenav_section_links">
+    <ul>
+        #links
+    </ul>
+</li>"""
+
+exit_on_include_failure = False
+
+sitemap_begin = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n"""
+sitemap_end = "</urlset>"
+
+"""
+************************************************************ REGULAR EXPRESSIONS ************************************************************
+"""
+# SIDENAV
+# heading with id
+re_sidenav_heading = r"<h\d.*id=(?:\"|\')([a-zA-Z0-9_\-]+)(?:\"|\').*>(.+)</h\d>"
+# custom entry
+re_sidenav_custom = r"href=(?:\"|\')([^\"\' ]+)(?:\"|\') +name=(?:\"|\')(.+)(?:\"|\')"
+
+# commas
+re_set_map = r"([a-zA-Z0-9_]+) *\? *\{( *(?:[a-zA-Z0-9_*]+ *: *[^,]*, *)+[a-zA-Z0-9_*]+ *: *[^,]*) *,? *\}"
+# semicolons
+re_set_map_alt = r"([a-zA-Z0-9_]+) *\? *\{( *(?:[a-zA-Z0-9_*]+ *: *[^;]* *; *)+[a-zA-Z0-9_*]+ *: *[^;]*) *;? *\}"
+
+""" #$(myvar) """
+re_variable_use = r"#\$\(([a-zA-Z0-9_]+)\)"
+
+""" only in comments """
+re_preprocessor_command = r"[\t ]*#([a-zA-Z]+) *(.*)[\t ]*"
+
+# https://www.w3.org/TR/NOTE-datetime
+re_w3cdate = r"\d{4}-(?)]-\d{2}"
+r"\d{4}-(?:0[1-9]|1[0-2])-(?:[0-2]\d|3[01])(T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d([\+\-](?:0\d|1[0-2]):[0-5]\d)?)?"
+
+COMMENT_BEGIN = "<!--"
+COMMENT_END = "-->"
+
+
+"""
+************************************************************ GLOBALS ************************************************************
+"""
+glob_dependcies: list[str] = []
+
+exit_codes = {
+    "FileNotFound": 2,
+    "MarkdownConversionError": 3,
+}
+error_levels = {
+    "light": 0,
+    "serious": 1,
+    "critical": 2,
+}
+exit_on_error_level = error_levels["serious"]
+
+# url that the currently processed file have
+current_file_url = ""
+
+
+"""
+************************************************************ UTILITY ************************************************************
+"""
+
+RED      = '\033[91m'
+GREEN    = '\033[92m'
+YELLOW   = '\033[93m'
+BLUE     = '\033[94m'
+MAGENTA  = '\033[95m'
+CYAN     = '\033[96m'
+GRAY     = '\033[97m'
+RESET    = '\033[0m'
+BOLD     = '\033[1m'
+WHITE    = '\033[37m'
+
+
+DEBUG = False
+def pdebug(*args, **keys):
+    fname, *_args = args
+    if DEBUG: print(f"{CYAN}{fname}{GRAY}", *_args, RESET, **keys)
+
+TRACE = False
+def ptrace(*args, **keys):
+    fname, *_args = args
+    if TRACE: print(f"{BLUE}{fname}{GRAY}", *_args, RESET, **keys)
+
+def error(*args, level:int=exit_on_error_level, exit_code:int=1, **keys):
+    fname, *_args = args
+    if level >= exit_on_error_level:
+        print(f"{RED}ERROR: {fname}{RESET}", *_args, RESET, **keys)
+        exit(exit_code)
+    else:
+        print(f"{YELLOW}WARNING: {fname}{RESET}", *_args, RESET, **keys)
+
+def line_is_link_to_path(line, path):
+    # check if the line is a link to html thats currently being processed
+    match = re.search(r"<a href=(\"|\')(.+)(\"|\')>(.+)</a>", line)
+    if match:
+        # get filename
+        match = re.match(r"[a-zA-Z0-9_\-]+\.html", match.groups()[1])
+        if match and match.group() in path:
+                return True
+    return False
+
+def pos2line(s: str, pos:int):
+    return s[:pos].count('\n') + 1
+
+
+def generate_dependecy_file(filename:str, deps:list[str]):
+    line1 = f"{filename}:"
+    s = ""
+    for dep in deps:
+        line1 += f" {dep}"
+        s += f"{dep}:\n"
+    return line1 #+ "\n" + s
+
+def evaluate_condition(input_string) -> bool:
+    words = re.split(r"(==|!=|&&|\|\|)", input_string.replace(" ", ""))
+    for i in range(len(words)):
+        if words[i] not in ["==", "!=", "&&", "||"]:
+            words[i] = '"' + words[i].replace('"', r'\"') + '"'
+
+    condition = "".join(words).replace("&&", " and ").replace("||", " or ")
+    ptrace("evaluate_conditon", f"Evaluating condition {condition}")
+    try:
+        return eval(condition)
+    except SyntaxError:
+        error("evaluate_conditon", f"Pythonized condition is invalid: {condition}", level=error_levels["light"])
+        return False
+
+"""
+************************************************************ SITEMAP ************************************************************
+"""
+class Sitemap:
+    urls:dict = {}
+    def __init__(self, url=None):
+        self.url = url
+        self.priority = None
+        self.changefreq = None
+        self.lastmod = None
+
+    def set_url(self, url):
+        self.url = url
+
+    def set_priority(self, priority):
+        try:
+            priority = float(priority)
+        except ValueError:
+            error("Sitemap.set_priority", f"invalid priority: '{priority}'", level=error_levels["serious"])
+        if not (type(priority) == float and 0.0 <= priority and priority <= 1.0):
+            error("Sitemap.set_priority", f"invalid priority: '{priority}'", level=error_levels["serious"])
+        self.priority = priority
+
+    def set_changefreq(self, changefreq):
+        if not (type(changefreq) == str and changefreq in ["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"]):
+            error("Sitemap.set_changefreq", f"invalid changefreq: '{changefreq}'", level=error_levels["serious"])
+        self.changefreq = changefreq
+
+    def set_lastmod(self, lastmod):
+        if not (type(lastmod) == str and re.fullmatch(re_w3cdate, lastmod)):
+            error("Sitemap.set_lastmod", f"invalid lastmod: '{lastmod}'", level=error_levels["serious"])
+        self.lastmod = lastmod
+
+    def get_entry(self):
+        s = f"<url>\n\t<loc>{self.url}</loc>"
+        if self.priority is not None: s += f"\n\t<priority>{self.priority}</priority>"
+        if self.changefreq is not None: s += f"\n\t<changefreq>{self.changefreq}</changefreq>"
+        if self.lastmod is not None: s += f"\n\t<lastmod>{self.lastmod}</lastmod>"
+        s += "\n</url>"
+        return s
+
+    def __repr__(self) -> str:
+        return f"Sitemap(url={self.url}, priority={self.priority}, changefreq={self.changefreq}, lastmod={self.lastmod})"
+
+    @staticmethod
+    def gen_sidemap():
+        s = sitemap_begin
+        for url in Sitemap.urls.values():
+            s += "\t" + url.get_entry().replace("\n", "\n\t").strip("\t") + "\n"
+        s += sitemap_end
+        return s
+
+    @staticmethod
+    def cmd_sitemap(args:str, variables:dict[str,str]) -> str:
+        space = args.find(" ")
+        if space < 0:
+            space = len(args)
+        cmd = args[:space]
+        cmd_args = ""
+
+        if 0 < space and space < len(args) - 1:
+            cmd_args = args[space+1:].strip(" ")
+        pdebug("cmd_sitemap", f"cmd='{cmd}' cmd_args='{cmd_args}'")
+        if not current_file_url in Sitemap.urls:
+            Sitemap.urls[current_file_url] = Sitemap()
+        if cmd == "include":
+            if cmd_args:
+                Sitemap.urls[current_file_url].set_url(cmd_args)
+            else:
+                Sitemap.urls[current_file_url].set_url(current_file_url)
+        elif cmd == "priority":
+            Sitemap.urls[current_file_url].set_priority(cmd_args)
+        elif cmd == "changefreq":
+            Sitemap.urls[current_file_url].set_changefreq(cmd_args)
+        elif cmd == "lastmod":
+            Sitemap.urls[current_file_url].set_lastmod(cmd_args)
+        else:
+            error("cmd_sitemap", f"Invalid command '{cmd}'", error_levels["serious"])
+        ptrace("cmd_sitemap", f"Sitemap[{current_file_url}] is now: {Sitemap.urls[current_file_url]}")
+        return ""
+
+
+"""
+************************************************************ SIDENAV ************************************************************
+"""
+def replace_and_respect_indent(string, replace, replacement):
+    """
+    replace all occurences of 'replace' with 'replacement', add the whitespaces in front of 'replace' to every line of 'replacement'
+    """
+    i = string.find(replace)
+    while i >= 0:
+        line_begin = string.rfind("\n", 0, i) + 1
+        indent = string[line_begin:i]
+        string = string[:line_begin] + replacement.replace("\n", "\n" + indent) + string[i+len(replace):]
+        i = string.find(replace)
+    return string
+
+class Sidenav:
+    class Link:
+        def __init__(self, name: str, link: str):
+            self.link = link
+            self.name = name
+        def __repr__(self):
+            return f"Link: name={self.name}, link={self.link}"
+
+        def get(self):
+            return sidenav_content_link.replace("#name", self.name).replace("#link", self.link)
+    class Section:
+        def __init__(self, name: str):
+            self.name = name
+            self.links = []
+        def add_link(self, link):
+            self.links.append(link)
+        def __repr__(self):
+            return f"Section: name={self.name}"
+        def get(self):
+            links = "".join([ link.get() + "\n" for link in self.links ])
+            return replace_and_respect_indent(sidenav_content_section.replace("#name", self.name), "#links", links)
+    entries: list[Link|Section] = []
+    skip_next = False
+    custom_name = None
+    @staticmethod
+    def addEntry(name: str, link: str):
+        if Sidenav.skip_next:
+            Sidenav.skip_next = None
+            return
+        if Sidenav.custom_name:
+            name = Sidenav.custom_name
+            Sidenav.custom_name = None
+        if len(Sidenav.entries) > 0 and type(Sidenav.entries[-1]) == Sidenav.Section:
+            Sidenav.entries[-1].add_link(Sidenav.Link(name, link))
+        else:
+            Sidenav.entries.append(Sidenav.Link(name, link))
+    @staticmethod
+    def addSection(name):
+        Sidenav.entries.append(Sidenav.Section(name))
+    @staticmethod
+    def setCustomName(name: str):
+        Sidenav.custom_name = name
+    @staticmethod
+    def skipNext():
+        Sidenav.skip_next = True
+    @staticmethod
+    def generate() -> str:
+        pdebug("Sidenav.generate", f"found the following entries: {Sidenav.entries}")
+        entries = "".join([entry.get() + "\n" for entry in Sidenav.entries])
+        return replace_and_respect_indent(sidenav_format, "#sidenav-content", entries)
+    @staticmethod
+    def cmd_sidenav(args:str, variables:dict[str,str]) -> str:
+        space = args.find(" ")
+        if space < 0:
+            space = len(args)
+        cmd = args[:space]
+        cmd_args = ""
+        if 0 < space and space < len(args) - 1:
+            cmd_args = args[space+1:].strip(" ")
+        pdebug("cmd_sidenav", f"cmd='{cmd}' cmd_args='{cmd_args}'")
+        if cmd == "skip":
+            Sidenav.skipNext()
+        elif cmd == "section":
+            Sidenav.addSection(cmd_args)
+        elif cmd == "name":
+            Sidenav.setCustomName(cmd_args)
+        elif cmd == "custom":
+            match = re.fullmatch(re_sidenav_custom, cmd_args)
+            if match:
+                Sidenav.addEntry(match.groups()[1], match.groups()[0])
+            else:
+                error("cmd_sidenav", f"Invalid argument for command 'custom': '{cmd_args}'", level=error_levels["light"])
+        elif cmd == "include":
+            return Sidenav.generate()
+        else:
+            error("cmd_sidenav", f"Invalid command: '{cmd}'", level=error_levels["light"])
+
+        return ""
+
+
+"""
+************************************************************ COMMANDS ************************************************************
+All these commands take one arg with trimmed whitespaces.
+The arg may be anything
+
+They all need to return a string, which will be placed
+into the source file at the place where the command was.
+"""
+def cmd_include(args: str, variables:dict[str, str]={}) -> str:
+    args = args.split(' ')
+    pdebug("cmd_include", f"args='{args}', variables='{variables}'")
+    filename = args[0]
+    content = ""
+    try:
+        with open(filename) as file:
+            content = file.read()
+        if len(args) > 1:  # if section was specified
+            target_section = args[1]
+            p = HTMLParser(content, {})
+            p.pos["start"] = p.pos["end"] = -1
+            while p.i < len(p):  # at start of new line or end of comment
+                p.find_line_end()
+                ptrace("cmd_include", f"Processing at i={p.i} in line {pos2line(p.file, p.i)}: '{p[p.i:p.pos['line_end']]}'")
+                if not p.find_comment_begin(): continue
+                if not p.find_comment_end(): continue
+                p.replace_multiline_comments()
+
+                match = p.find_command()
+                if match:
+                    command = match.groups()[0]
+                    cmd_args = match.groups()[1].replace('\t', ' ').strip(' ')
+                    pdebug("cmd_include", f"Found command '{command}' with args '{cmd_args}'")
+                    if command == "section":
+                        if cmd_args.startswith(target_section):
+                            p.pos["start"] = max(p.pos["cmt_end"] + len(COMMENT_END), p.pos["line_end"] + 1)
+                        elif p.pos["start"] >= 0:  #end
+                            p.pos["end"] = max(p.pos["cmt_end"] + len(COMMENT_END), p.pos["line_end"] + 1)
+                            # p.pos["end"] = p.pos["cmt_beg"]
+                        p.replace_command_with_output("")
+                        p.command_end()  # remove the command (+comment)
+                        if p.pos["start"] >= 0 and p.pos["end"] > 0: break
+                        continue
+                # section cmd in multiline comment is not supported, so simply jump to end of comment
+                p.i = p.pos["cmt_end"] + len(COMMENT_END)
+                p.pos["cmt_beg"] = -1
+                p.pos["cmd_beg"] = -1
+                p.pos["cmt_end"] = -1
+                p.pos["cmd_end"] = -1
+            if p.pos["start"] >= 0:
+                if p.pos["end"] < 0:
+                    p.pos["end"] = len(p)
+                content = p[p.pos["start"]:p.pos["end"]]
+            else:
+                error("cmd_include", f"Could not find section {target_section} in file {filename}")
+    except FileNotFoundError:
+        error("cmd_include", f"Could not open file '{filename}'", level=error_levels["serious"], exit_code=exit_codes["FileNotFound"])
+        content = f"<!-- Could not include '{filename}' -->"
+    if filename.endswith(".md"):
+        try:
+            from markdown import markdown
+            content = markdown(content, output_format="xhtml")
+        except:
+            error("cmd_include", f"Could convert markdown to html for file '{filename}'. Is python-markdown installed?", level=error_levels["critical"], exit_code=exit_codes["MarkdownConversionError"])
+            content = f"<!-- Could not convert to html: '{filename}' -->"
+    glob_dependcies.append(filename)
+    return content
+
+def cmd_section(args: str, variables:dict[str, str]={}) -> str:
+    return ""
+
+def cmd_return(args: str, variables:dict[str, str]={}) -> str:
+    # re_set_map = r"([a-zA-Z0-9_]+)\?\{(([a-zA-Z0-9_]+:.+,)*([a-zA-Z0-9_]+:.+))\}"
+    # <!-- #set section=lang?{*:Fallback,de:Abschnitt,en:Section} -->
+    space = args.find(' ')
+    pdebug("cmd_set", f"varname='{args[:space]}, 'arg='{args[space+1:]}', variables='{variables}'")
+    if not (space > 0 and space < len(args)-1):
+        variables[args] = ""
+        pdebug("cmd_set", f"Setting to empty string: {args}")
+    else:
+        varname = args[:space]
+        variables[varname] = ""
+        # check if map assignment with either , or ;
+        separator = ','
+        match = re.fullmatch(re_set_map, args[space+1:].strip(' '))
+        if not match:
+            match = re.fullmatch(re_set_map_alt, args[space+1:].strip(' '))
+            separator = ';'
+        if match:
+            pdebug("cmd_set", f"Map {match.group()}")
+            depends = match.groups()[0]
+            if not depends in variables:
+                pdebug("cmd_set", f"Setting from map, but depends='{depends}' is not in variables")
+                return ""
+            depends_val = variables[depends]
+            for option in match.groups()[1].split(separator):
+                option = option.strip(" ")
+                pdebug("cmd_set", f"Found option {option}")
+                colon = option.find(':')  # we will find one, regex guarantees
+                if option[:colon].strip(" ") == depends_val or option[:colon].strip(" ") == "*":
+                    variables[varname] = option[colon+1:].strip(" ")
+
+        else:  # simple asignment
+            value = args[space+1:].strip(" ")
+            variables[varname] = value
+            pdebug("cmd_set", f"Assignment {varname} -> {value}")
+        return variables[varname]
+    return ""
+
+def cmd_set(args: str, variables:dict[str, str]={}) -> str:
+    cmd_return(args, variables)
+    return ""
+
+def cmd_unset(args: str, variables:dict[str, str]={}) -> str:
+    variable = args.strip(' ')
+    if variable not in variables:
+        pdebug("cmd_unset", f"variable '{variable}' is not set", level=error_levels["light"])
+    else:
+        variables.pop(variable)
+    return ""
+
+def cmd_default(args: str, variables:dict[str, str]={}) -> str:
+    separator = args.find(' ')
+    if args[:separator] not in variables:
+        cmd_return(args, variables)
+    return ""
+
+
+def cmd_comment(args: str, variables:dict[str, str]={}) -> str:
+    return f"<!-- {args} -->"
+def cmd_uncomment(args: str, variables:dict[str, str]={}) -> str:
+    return args
+
+def cmd_error(args: str, variables:dict[str, str]={}) -> str:
+    error("cmd_error", f"Encounted 'error' command: {args}", level=error_levels["critical"])
+    return ""
+def cmd_warning(args: str, variables:dict[str, str]={}) -> str:
+    error("cmd_warning", f"Encounted 'warning' command: {args}", level=error_levels["light"])
+    return ""
+
+
+command2function:dict[str, Callable[[str, dict[str,str]], str]] = {
+    "include":      cmd_include,
+    "section":      cmd_section,
+    "return":       cmd_return,
+    "set":          cmd_set,
+    "unset":        cmd_unset,
+    "default":      cmd_default,
+    "comment":      cmd_comment,
+    "uncomment":    cmd_uncomment,
+    "sidenav":      Sidenav.cmd_sidenav,
+    "sitemap":      Sitemap.cmd_sitemap,
+    "warning":      cmd_warning,
+    "error":        cmd_error,
+}
+
+"""
+************************************************************ PARSING ************************************************************
+"""
+
+class Parser():
+    """
+    General purpose parser class
+    It has states and positions in a text, which are updated when portions of the text are replaced or removed
+    """
+    def __init__(self, file):
+        self.file = file
+        self.pos: dict[str, int] = {}
+        self.state: dict[str, bool] = {}
+
+    def remove(self, start, stop, ignore_bounds=[]):
+        """remove range [start, stop) of text and update positions"""
+        delete_length = stop - start
+        nl, esl = "\n", "\\n"
+
+        ptrace("Parser.remove", f"Deleting range [{start}, {stop}) of length {delete_length}: '{self.file[start:stop].replace(nl, esl)}'")
+        assert(stop >= start)
+        assert(stop <= len(self.file))
+        self.file = self.file[:start] + self.file[stop:]
+        for k,pos in self.pos.items():
+            if pos >= stop: self.pos[k] -= delete_length
+            elif pos > start and not k in ignore_bounds: error("Parser.remove", f"Position {k}={pos} within deleted range [{start},{stop})", level=error_levels["light"])
+
+    def replace(self, start, stop, replacement, ignore_bounds=[]):
+        assert(stop >= start)
+        assert(stop <= len(self.file))
+        ptrace("Parser.replace", f"Replacing range [{start}, {stop}): '{self.file[start:stop]}' with '{replacement}'")
+        self.file = self.file[:start] + replacement + self.file[stop:]
+        length_difference = stop - start - len(replacement)
+        for k,pos in self.pos.items():
+            if pos >= stop: self.pos[k] -= length_difference
+            elif pos > start and k not in ignore_bounds: error("Parser.replace", f"Position {k}={pos} within replaced range [{start},{stop})", level=error_levels["light"])
+
+    def __getitem__(self, key):
+        return self.file[key]
+
+    def __len__(self):
+        return len(self.file)
+
+
+class HTMLParser(Parser):
+    """
+    Parse a html file
+    Each function operates the positon indicated by i until the position "line_end"
+    """
+    def __init__(self, file, variables:dict[str, str], remove_comments=False):
+        super().__init__(file)
+        self.i = 0
+        self.variables = variables
+        self.pos["cmt_beg"] = -1
+        self.pos["cmt_end"] = -1
+        self.pos["cmd_beg"] = -1
+        self.pos["cmd_end"] = -1
+        self.pos["line_end"] = -1
+        self.pos["conditional_block_beg"] = -1  # char pos of the first char of the last block, if waiting for elif, else or endif
+        self.state["cmd_in_cmt"] = False
+        self.state["last_condition"] = False  # if the last if condition was true
+        self.remove_comments = remove_comments
+
+
+    def use_variables(self):
+        """replace variable usages in the current line"""
+        self.replace(self.i, self.pos["line_end"], substitute_variables(self[self.i:self.pos["line_end"]], self.variables))
+        ptrace("HTMLParser.use_variables", f"Line after variable substitution:", self.file[self.i:self.pos["line_end"]])
+
+    def add_sidenav_headings(self):
+        """check if heading for sidenav in line"""
+        match = re.search(re_sidenav_heading, self[self.i:self.pos["line_end"]])
+        if match:
+            Sidenav.addEntry(match.groups()[1], f"#{match.groups()[0]}")
+            ptrace("HTMLParser.add_sidenav_headings:", f"Found heading with id:", match.groups())
+
+    def get_leading_whitespaces(self):
+        """returns the whitespaces at the start of the line"""
+        # find last newline
+        line_beg = self.file.rfind("\n", 0, self.i)
+        if line_beg < 0: line_beg = 0
+        else: line_beg += 1  # start after newline
+        match = re.match(r"^([ \t]*)", self.file[line_beg:self.pos['line_end']])
+        if not match: return ""
+        else: return match.groups()[0]
+
+
+    # Parsing functions
+    def find_line_end(self):
+        """
+            line_end -> position of next newline char or EOF
+        """
+        self.pos["line_end"] = self.file.find('\n', self.i+1)
+        if self.pos["line_end"] < 0: self.pos["line_end"] = len(self)
+
+
+    def find_comment_begin(self) -> bool:
+        """
+        find the beginning of a comment in the current line
+        if comment begin was found, jump into the comment, return True
+            cmt_beg -> beginning of COMMENT_BEGIN
+            i -> first character after COMMENT_BEGIN / line_end + 1
+
+        """
+        # look for comment begin
+        if self.pos["cmt_beg"] < 0:  # if not in comment, find next comment
+            self.pos["cmt_beg"] = self.file.find(COMMENT_BEGIN, self.i, self.pos["line_end"])
+            if self.pos["cmt_beg"] < 0:
+                self.i = self.pos["line_end"] + 1
+                return False
+            else:
+                # jump to comment_begin
+                old_i = self.i
+                self.i = self.pos["cmt_beg"] + len(COMMENT_BEGIN)  # after comment begin
+                ptrace(f"HTMLParser.find_comment_begin", f"Found comment begin, jumping from pos {old_i} to {self.i}")
+                return True
+        return True  # still in previous comment
+
+
+    def find_comment_end(self):
+        """
+        call after find_comment_begin returns true to update the cmt_end
+        call continue when returning false
+            cmt_end -> beginning of COMMENT_END / ---
+            cmt_beg -> ---  / -1 when invalid comment
+        """
+        # in comment, i at the character after COMMENT_BEGIN
+        self.pos["cmt_end"] = self.file.find(COMMENT_END, self.i) #, self.pos["line_end"])
+        # sanity checks
+        if self.pos["cmt_end"] < 0:
+            error("HTMLParser.find_comment_end", f"Comment starting in line {pos2line(self.file, self.pos['cmt_beg'])} is never ended.", level=error_levels["serious"])
+            return False
+        else:
+            tmp_next_begin = self.file.find(COMMENT_BEGIN, self.i)
+            if 0 < tmp_next_begin and  tmp_next_begin < self.pos["cmt_end"]:
+                error("HTMLParser.find_comment_end", f"Found next comment begin before the comment starting in line {pos2line(self.file, self.pos['cmt_beg'])} is ended! Skipping comment. Comment without proper closing tags: '{self.file[self.i:self.pos['line_end']]}'", level=error_levels["light"])
+                self.pos["cmt_beg"] = -1
+                return False
+        return True
+
+
+    def replace_multiline_comments(self):
+        """
+        if in a multiline comment, turn every line into a separate comment
+        """
+        # not a multiline comment
+        if self.pos["line_end"] > self.pos["cmt_end"]: return
+        indent = self.get_leading_whitespaces()
+        self.replace(self.pos["cmt_beg"], self.pos["cmt_end"], self.file[self.pos["cmt_beg"]:self.pos["cmt_end"]].replace("\n", "-->\n" + indent + "<!--"), ignore_bounds=["line_end"])
+        self.find_line_end()
+        self.find_comment_end()
+
+
+    def find_command(self):
+        # either at newline (if in multiline comment) or at comment end
+        self.pos["cmd_beg"] = self.i
+        self.pos["cmd_end"] = min(self.pos["line_end"], self.pos["cmt_end"])
+        assert self.pos["cmd_end"] >= self.i, f"cmd_end={self.pos['cmd_end']}, i={self.i}, line_end={self.pos['line_end']}, cmt_end={self.pos['cmt_end']}"
+        ptrace("HTMLParser.find_command", f"Possible command end: {self.pos['cmd_end']}, possible command: '{self[self.i:self.pos['cmd_end']]}'")
+
+        # find commands
+        match = re.fullmatch(re_preprocessor_command, self[self.i:self.pos["cmd_end"]].strip(" "))
+        if match:
+            self.state["cmd_in_cmt"] = True
+        return match
+
+    def replace_command_with_output(self, command_output):
+        # keep indent level
+        indent = self.get_leading_whitespaces()
+        self.replace(self.i, self.pos["cmd_end"], command_output.replace("\n", "\n" + indent))
+        ptrace(f"HTMLParser.replace_command_with_output", f"After command, the line is now '{self.file[self.i:self.pos['line_end']]}'")
+
+    def command_end(self):
+        if self.pos["cmd_end"] == self.pos["cmt_end"]:  # reached end of comment
+            if self.state["cmd_in_cmt"] or self.remove_comments:
+                remove_newline = 0
+                if self[self.pos["cmt_beg"]-1] == '\n' and self[self.pos["cmt_end"]+len(COMMENT_END)] == '\n':  # if the comment consumes the whole line, remove the entire line
+                    remove_newline = 1
+                if self.state["cmd_in_cmt"]:  # remove comment tags if a command was found
+                    ptrace("HTMLParser.command_end", f"Deleting opening comment tags")
+                    self.remove(self.pos["cmt_beg"], self.pos["cmt_beg"] + len(COMMENT_BEGIN))
+                    self.remove(self.pos["cmt_end"], self.pos["cmt_end"] + len(COMMENT_END) + remove_newline, ignore_bounds=["cmt_end", "cmd_end", "line_end"])
+                    # process the line again, because a command might have inserted new comments
+                    self.i -= len(COMMENT_BEGIN)
+                elif self.remove_comments:  # remove entire comment
+                    self.remove(self.pos["cmt_beg"], self.pos["cmt_end"] + len(COMMENT_END) + remove_newline, ignore_bounds=["cmt_end", "cmd_beg", "cmd_end", "line_end"])
+                    self.i = self.pos["cmt_beg"]
+            self.state["cmd_in_cmt"] = False
+            self.pos["cmt_beg"] = -1
+            self.pos["cmd_beg"] = -1
+            self.pos["cmt_end"] = -1
+            self.pos["cmd_end"] = -1
+        else:  # multiline comment
+            self.pos["cmt_end"] = -1
+            self.pos["cmd_end"] = -1
+            self.i = self.pos["line_end"] + 1
+            ptrace(f"HTMLParser.command_end", f"Multiline comment, jumping to next line.")
+        # i = possible_command_end commented, because if something containing new commands is inserted we need to parse that as well
+
+
+def parse_file(_file:str, variables:dict[str,str], remove_comments):
+    p = HTMLParser(_file, variables, remove_comments=remove_comments)
+    sidenav_include_pos = -1
+
+    while p.i < len(p):  # at start of new line or end of comment
+        p.find_line_end()
+        ptrace("parse_file", f"Processing at i={p.i} in line {pos2line(p.file, p.i)}: '{p[p.i:p.pos['line_end']]}'")
+
+        p.use_variables()
+        p.add_sidenav_headings()
+
+        if not p.find_comment_begin(): continue
+
+        if not p.find_comment_end(): continue
+        p.replace_multiline_comments()
+
+        match = p.find_command()
+        if match:
+            command = match.groups()[0]
+            args = match.groups()[1].replace('\t', ' ').strip(' ')
+            pdebug("parse_file", f"Found command '{command}' with args '{args}'")
+            # delete from previous block if
+            if command in ["elif", "else", "endif"]:
+                if p.pos["conditional_block_beg"] < 0: error("parse_file", f"Misplaced '{command}' in line {pos2line(p.file, p.i)}")
+                if p.state["last_condition"]:
+                    # delete block from here at next endif
+                    p.state["last_condition"] = False
+                else:
+                    # delete block from last condition statement
+                    ptrace("parse_file", f"> Deleting block from last condition")
+                    p.remove(p.pos["conditional_block_beg"], p.pos["cmt_beg"])
+                    p.i = p.pos["cmd_beg"]
+                p.pos["conditional_block_beg"] = p.i
+                if command == "endif":
+                    p.pos["conditional_block_beg"] = -1
+                    p.state["last_condition"] = False
+                    p.state["any_condition"] = False
+            # evaluate ifs
+            if command == "if":
+                p.pos["conditional_block_beg"] = p.i
+                p.state["last_condition"] = evaluate_condition(args)
+                p.state["any_condition"] = p.state["last_condition"]
+                pdebug("parse_file", f"Command {command} condition evaluated to {p.state['last_condition']}")
+                cmd_output = ""
+            elif command =="elif":
+                p.pos["conditional_block_beg"] = p.i
+                p.state["last_condition"] = evaluate_condition(args) if not p.state["any_condition"] else False
+                if p.state["last_condition"]:
+                    p.state["any_condition"] = True
+                pdebug("parse_file", f"Command {command} condition evaluated to {p.state['last_condition']}")
+                cmd_output = ""
+            elif command == "else":
+                p.pos["conditional_block_beg"] = p.i
+                p.state["last_condition"] = True if not p.state["any_condition"] else False
+                cmd_output = ""
+            elif p.pos["conditional_block_beg"] < 0 or p.state["last_condition"]:
+                if command == "sidenav" and args == "include":  # if args contains anything else this wont work
+                    sidenav_include_pos = p.pos["cmt_beg"]  # remove the comment 
+                    cmd_output = ""
+                elif command == "endif":
+                    cmd_output = ""
+                elif command not in command2function:
+                    error("parse_file", f"Invalid command in line {pos2line(p.file, p.i)}: {command}", level=error_levels["light"])
+                    cmd_output = ""
+                else:
+                    cmd_output = command2function[command](args, variables)
+            else:
+                cmd_output = ""
+            p.replace_command_with_output(cmd_output)
+        else:
+            pdebug("parse_file", f"Did not find command in comment {p.file[p.pos['cmt_beg']:p.pos['cmt_end']+len(COMMENT_END)]}")
+
+        p.command_end()
+
+    if sidenav_include_pos >= 0:
+        p.i = sidenav_include_pos  # required before get_leading_whitespaces
+        p.find_line_end()  # required before get_leading_whitespaces
+        indent = p.get_leading_whitespaces()
+        return p.file[:sidenav_include_pos] + Sidenav.generate().replace("\n", "\n" + indent) + p.file[sidenav_include_pos:]
+    else:
+        return p.file
+
+
+def substitute_variables(html:str, variables:dict[str, str]):
+    """
+    find usage of variables and replace them with their value
+    """
+    matches = []
+    for match in re.finditer(re_variable_use, html):
+        matches.append(match)
+    html_list = list(html)
+    for match in reversed(matches):
+        pdebug("substitute_variables", f"Found variable usage {match.groups()[0]}, match from {match.start()} to {match.end()}")
+        value = ""
+        if match.groups()[0] in variables: value = variables[match.groups()[0]]
+        else:
+            pdebug("substitute_variables", f"Variable {match.groups()[0]} is used but not defined")
+        for _ in range(match.start(), match.end()):
+            html_list.pop(match.start())
+        html_list.insert(match.start(), value.strip(" "))
+    return ''.join(html_list)
+
+"""
+************************************************************ COMMAND LINE ************************************************************
+"""
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(prog="bUwUma html preprocessor")
+    parser.add_argument("--input", action="store", help="path to the input file", default="")
+    parser.add_argument("--output", action="store", help="output to this file", default="")
+    parser.add_argument("--inplace", action="store_true", help="overwrite input file")
+    parser.add_argument("--preserve-comments", action="store_true", help="do not remove normal html comments", default=False)
+    parser.add_argument("--var", action="append", help="set a variable --var varname=value", default=[])
+    parser.add_argument("--output-deps", action="store", help="output a Makefile listing all dependencies", default="")
+    parser.add_argument("--sitemap-generate", action="store", help="generate the sitemap from the sitemap-temp-file", default="")
+    parser.add_argument("--sitemap-temp-file", action="store", help="file for storing sitemap data during build process", default="/tmp/sitemap.pkl")
+    parser.add_argument("--sitemap-webroot-dir", action="store", help="directory of the webroot, without trailing /. This will be removed from the output path for generating the sitemap url entry", default="")
+    parser.add_argument("--sitemap-base-url", action="store", help="base url of the website, without trailing /", default="https://www.example.com")
+    parser.add_argument("--sitemap-remove-ext", action="store_true", help="remove the file extenstion in the sitemap entry")
+    parser.add_argument("--exit-on", action="store", help="exit when an error of the given severity occures", choices=["light", "serious", "critical"], default="serious")
+    parser.add_argument("--debug", action="store_true", help="be more verbose", default=False)
+    parser.add_argument("--trace", action="store_true", help="be extremly verbose", default=False)
+    variables:dict[str, str] = {}
+
+    args = parser.parse_args()
+
+    for var in args.var:
+        sep = var.find('=')
+        if sep > 0 and sep < len(var) - 1:
+            variables[var[:sep].strip(" ")] = var[sep+1:].strip(" ")
+        else:
+            parser.error(f"Invalid argument: --var '{var}'\n\tUsage: --var <varname>=<value>")
+
+    args.input = args.input.strip(" ")
+    args.output = args.output.strip(" ")
+    args.output_deps = args.output_deps.strip(" ")
+    args.sitemap_temp_file = args.sitemap_temp_file.strip(" ")
+    args.sitemap_generate = args.sitemap_generate.strip(" ")
+    TRACE = args.trace
+    if args.trace: args.debug = True
+    DEBUG = args.debug
+
+    # either input file or sitemap_generate is required
+    if not (bool(args.input) ^ bool(args.sitemap_generate)):
+        parser.error(f"Exactly one if --input or --sitemap-generate must be given")
+
+    if args.input:
+        if args.sitemap_webroot_dir:
+            current_file_url = args.sitemap_base_url + args.output.replace(args.sitemap_webroot_dir, "")
+        else:
+            current_file_url = args.sitemap_base_url + args.output
+
+        if args.sitemap_remove_ext:
+            current_file_url = os.path.splitext(current_file_url)[0]
+
+        pdebug("main", f"current_file={current_file_url}")
+
+        # sanity checks
+        if not path.isfile(args.input):
+            parser.error(f"Invalid input file:: {args.input}")
+        if args.output:
+            if not path.isdir(path.dirname(args.output)):
+                parser.error(f"Invalid path to output file - directory does not exist: '{path.dirname(args.output)}'")
+        elif args.inplace:
+            args.output = args.input
+        if args.inplace and args.output:
+            parser.error(f"Only one of --output or --inplace mut be given")
+        if args.output_deps:
+            if not path.isdir(path.dirname(args.output_deps)):
+                parser.error(f"Invalid path to dependency file - directory does not exist: '{path.dirname(args.output_deps)}'")
+            if not args.output:
+                parser.error(f"--output-deps requires either --output <file> our --inplace")
+
+        if args.sitemap_temp_file:
+            if path.isfile(args.sitemap_temp_file):
+                with open(args.sitemap_temp_file, "rb") as file:
+                    Sitemap.urls = pickle.load(file)
+
+        # get html
+        with open(args.input, "r") as file:
+            target_html = file.read()
+
+        output_html = parse_file(target_html, variables, not args.preserve_comments)
+        # remove empty lines
+        output_html = re.sub(r"[\t\r ]*\n(?:[\t\r ]*\n)+", r"\n", output_html)
+
+        # pdebug(f"Output: {output_html}")
+
+        # save
+        if args.output:
+            with open(args.output, "w") as file:
+                file.write(output_html)
+        else:
+            print(output_html)
+
+        if args.output_deps:
+            if args.output != args.input:
+                glob_dependcies.append(args.input)
+            depfile = generate_dependecy_file(args.output, glob_dependcies)
+            pdebug("main", f"Writing dependency file to {os.path.abspath(args.output_deps)}: {depfile}")
+            with open(args.output_deps, "w") as file:
+                file.write(depfile)
+        if args.sitemap_temp_file:
+            with open(args.sitemap_temp_file, "wb") as file:
+                pickle.dump(Sitemap.urls, file)
+    else:  # sitemap_generate
+        if not path.isfile(args.sitemap_temp_file):
+            parser.error(f"Invalid sitemap-temp-file: '{args.sitemap_temp_file}'")
+        with open(args.sitemap_temp_file, "rb") as file:
+            Sitemap.urls = pickle.load(file)
+        sitemap = Sitemap.gen_sidemap()
+        pdebug("main", f"Writing sitemap to {os.path.abspath(args.sitemap_generate)}")
+        with open(args.sitemap_generate, "w") as file:
+            file.write(sitemap)
