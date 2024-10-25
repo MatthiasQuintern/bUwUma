@@ -393,11 +393,16 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
         content = f"<!-- Could not include '{filename}' -->"
     if filename.endswith(".md"):
         try:
-            from markdown import markdown
-            content = markdown(content, output_format="xhtml")
+            import mdtex2html as m2h  # this package also converts tex to MathML
+            content = m2h.convert(content, extensions=["extra"])
         except:
-            error("cmd_include", f"Could convert markdown to html for file '{filename}'. Is python-markdown installed?", level=error_levels["critical"], exit_code=exit_codes["MarkdownConversionError"])
-            content = f"<!-- Could not convert to html: '{filename}' -->"
+            error("cmd_include", f"mdtex2html could not be imported, falling back to python-markdown for md to html conversion", level=error_levels["light"], exit_code=exit_codes["MarkdownConversionError"])
+            try:
+                from markdown import markdown
+                content = markdown(content, output_format="xhtml", extensions=["extra"])
+            except:
+                error("cmd_include", f"Could convert markdown to html for file '{filename}'. Is python-markdown installed?", level=error_levels["critical"], exit_code=exit_codes["MarkdownConversionError"])
+                content = f"<!-- Could not convert to html: '{filename}' -->"
     glob_dependcies.append(filename)
     return content
 
