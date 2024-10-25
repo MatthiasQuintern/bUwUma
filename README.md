@@ -9,6 +9,12 @@ For more information and a quickstart guide on how to use `bUwUma`, please
 refer to the article [on my website](https://quintern.xyz/en/software/buwuma.html).
 
 # HTML Preprocessor Documentation
+## Markdown support
+Using the `#include` command (see below) you can include markdown files, which will be automatically
+converted to html using [mdtex2html](https://pypi.org/project/mdtex2html), which also supports converting LaTeX to MathML.
+If mdtex2html is not installed `python-markdown` will be used instead.
+Preprocessor commands in included markdown files will be handled as well.
+
 ## Syntax
 ### Commands
 - All commands must be located within a html comment that starts with `<!--` and ends with `-->`.
