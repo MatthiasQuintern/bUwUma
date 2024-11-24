@@ -139,7 +139,7 @@ HTML_PP_CMD 	= python3 html-preprocessor --exit-on light
 # --source-maps-urls=absolute is appended for generating dependency files
 SASS_CMD 		= sass --color
 
-OPTIMIZED_IMG_CMD 	= convert -quality $(OPTIMIZED_IMG_QUALITY)
+OPTIMIZED_IMG_CMD 	= magick -quality $(OPTIMIZED_IMG_QUALITY)
 
 # [absolute or relative to current working directory]
 DEP_DIR 		= .dependencies
@@ -331,13 +331,13 @@ ifdef FAVICONS
 # must be first
 $(FAVICON_ICO): $(_FAVICON) | $(__FAVICON_OUT_DIR)
 	@printf $(FMT_OUT_FAVICON) "$<" "$@"
-	@convert "$<" -define icon:auto-resize=16,32,48 "$@"
+	@magick "$<" -define icon:auto-resize=16,32,48 "$@"
 
 $(FAVICONS_PNG): $(_FAVICON) | $(__FAVICON_OUT_DIR)
 	@printf $(FMT_OUT_FAVICON) "$<" "$@"
 	@# resize to 512x512 and pad with transparency in case resize did not resize to correct size
 	@size=$$(echo "$@" | grep -o -P '\d{2,4}x\d{2,4}');\
-	convert "$<" -resize "$${size}" -background none -gravity center -extent "$${size}" "$@"
+	magick "$<" -resize "$${size}" -background none -gravity center -extent "$${size}" "$@"
 endif
 
 
