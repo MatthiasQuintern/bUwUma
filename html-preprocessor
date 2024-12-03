@@ -367,7 +367,7 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
                     cmd_args = match.groups()[1].replace('\t', ' ').strip(' ')
                     pdebug("cmd_include", f"Found command '{command}' with args '{cmd_args}'")
                     if command == "section":
-                        if cmd_args.startswith(target_section):
+                        if cmd_args == target_section:
                             p.pos["start"] = max(p.pos["cmt_end"] + len(COMMENT_END), p.pos["line_end"] + 1)
                         elif p.pos["start"] >= 0:  #end
                             p.pos["end"] = max(p.pos["cmt_end"] + len(COMMENT_END), p.pos["line_end"] + 1)
