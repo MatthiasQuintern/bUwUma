@@ -394,7 +394,8 @@ def cmd_include(args: str, variables:dict[str, str]={}) -> str:
     if filename.endswith(".md"):
         try:
             import mdtex2html as m2h  # this package also converts tex to MathML
-            content = m2h.convert(content, extensions=["extra"])
+            # replace #$ to avoid everything being parsed as formula
+            content = m2h.convert(content.replace('\\#$', 'REPLHASHDOLLAR').replace('#$', 'REPLHASHDOLLAR'), extensions=["extra"]).replace('REPLHASHDOLLAR', '#$')
         except:
             error("cmd_include", f"mdtex2html could not be imported, falling back to python-markdown for md to html conversion", level=error_levels["light"], exit_code=exit_codes["MarkdownConversionError"])
             try:
